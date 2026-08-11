@@ -41,7 +41,7 @@ struct image_t* read_ppm_file(char* path_to_input_file)
 		val = read_stream.get(); //'6'
 		
 		// width
-		val = skip_blanks_comments_while_reading(&read_stream);		
+		val = skip_blanks_comments_while_reading(&read_stream);	
 		while(true)
 		{
 			if(val == ' ' || val == '\t' || val == '\n')
