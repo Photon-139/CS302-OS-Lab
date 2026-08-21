@@ -1,4 +1,4 @@
 /src/*.out
 /src/*_solved*
 
-file.txt
+/src/file.txt

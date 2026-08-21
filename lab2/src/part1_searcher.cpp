@@ -39,8 +39,8 @@ int main(int argc, char **argv)
 			size_t pos = buffer.find(pattern_to_search_for);
 			if (pos != string::npos)
 			{
-				cout << "[" << getpid() << "] found at [" << (search_start_position + (int)pos) << "]\n";
-				return 0;
+				cout << "[" << getpid() << "] found at " << (search_start_position + (int)pos) << "\n";
+				return 1;
 			}
 		}
 	}
