@@ -1,0 +1,76 @@
+./part2.out file.txt NGTNIJGK 0 67108863 8388608
+[38170] start position = 50331648 ; end position = 58720255
+[38177] didnt find
+[38169] start position = 16777216 ; end position = 25165823
+[38178] didnt find
+[38173] start position = 33554432 ; end position = 41943039
+[38179] didnt find
+[38174] start position = 0 ; end position = 8388607
+[38182] didnt find
+[38172] start position = 25165824 ; end position = 33554431
+[38180] didnt find
+[38176] start position = 41943040 ; end position = 50331647
+[38181] didnt find
+[38175] start position = 8388608 ; end position = 16777215
+[38183] didnt find
+[38171] start position = 58720256 ; end position = 67108863
+[38184] didnt find
+[38170] start position = 50331648 ; end position = 58720255
+[38170] forked searcher child 38177
+[38170] searcher child returned
+[38169] start position = 16777216 ; end position = 25165823
+[38169] forked searcher child 38178
+[38169] searcher child returned
+[38173] start position = 33554432 ; end position = 41943039
+[38173] forked searcher child 38179
+[38173] searcher child returned
+[38174] start position = 0 ; end position = 8388607
+[38174] forked searcher child 38182
+[38174] searcher child returned
+[38172] start position = 25165824 ; end position = 33554431
+[38172] forked searcher child 38180
+[38172] searcher child returned
+[38176] start position = 41943040 ; end position = 50331647
+[38176] forked searcher child 38181
+[38176] searcher child returned
+[38175] start position = 8388608 ; end position = 16777215
+[38175] forked searcher child 38183
+[38175] searcher child returned
+[38166] start position = 33554432 ; end position = 50331647
+[38166] forked left child 38173
+[38166] forked right child 38176
+[38166] left child returned
+[38166] right child returned
+[38171] start position = 58720256 ; end position = 67108863
+[38171] forked searcher child 38184
+[38171] searcher child returned
+[38167] start position = 16777216 ; end position = 33554431
+[38167] forked left child 38169
+[38167] forked right child 38172
+[38167] left child returned
+[38167] right child returned
+[38168] start position = 50331648 ; end position = 67108863
+[38168] forked left child 38170
+[38168] forked right child 38171
+[38168] left child returned
+[38168] right child returned
+[38165] start position = 0 ; end position = 16777215
+[38165] forked left child 38174
+[38165] forked right child 38175
+[38165] left child returned
+[38165] right child returned
+[38164] start position = 33554432 ; end position = 67108863
+[38164] forked left child 38166
+[38164] forked right child 38168
+[38164] left child returned
+[38164] right child returned
+[38163] start position = 0 ; end position = 33554431
+[38163] forked left child 38165
+[38163] forked right child 38167
+[38163] left child returned
+[38163] right child returned
+[38162] start position = 0 ; end position = 67108863
+[38162] forked left child 38163
+[38162] forked right child 38164
+[38162] left child returned
+[38162] right child returned
