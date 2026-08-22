@@ -6,7 +6,7 @@
 
 using namespace std;
 
-pid_t left_pid = -1, right_pid = -1, searcher_pid;
+pid_t left_pid = -1, right_pid = -1, searcher_pid = -1;
 
 void handle_sig(int sig){
     cout << "[" << getpid() << "] received SIGTERM\n";
