@@ -27,11 +27,10 @@ std::vector<Process> parse_workload(const char* file_path){
             if(number==-1) break;
             if(cpu_burst){
                 p.cpu_bursts.push_back(number);
-                cpu_burst = false;
             }else{
                 p.io_bursts.push_back(number);
-                cpu_burst = true;
             }
+            cpu_burst = !cpu_burst;
         }
         processes.push_back(std::move(p));
     }
