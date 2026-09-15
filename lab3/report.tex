@@ -1,0 +1,378 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage{tikz}
+\usetikzlibrary{trees}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor} % optional, for syntax highlighting
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+\title{\textbf{Lab Report} \\ Operating Systems Laboratory \\ Assignment 3: Process Scheduling}
+\author{Anshuman Rahul (CS24BT060) \\ Sidharth B (CS24BT061)}
+\date{}
+
+\begin{document}
+\maketitle
+\section{Introduction}
+The nature of the scheduling policy a system utilizes has a significant impact on the performance of that system. In this assignment, we implement a discrete event simulator to implement the following policies and test them over 5 workloads
+\begin{itemize}
+    \item First In First Out
+    \item Round Robin
+    \item MLFQ
+\end{itemize}
+
+\section{Policies}
+\begin{itemize}
+    \item{
+        \textbf{First In First Out:} Processes are scheduled in the order they arrive, FIFO is an example of a non-preemptive scheduling policy.  
+    }
+    \item{
+        \textbf{Round Robin:} Processes run for a fixed quantum until either the quantum expires or the process terminates. We use a quantum of 2. Round Robin is an example of preemptive policy. 
+    } 
+    \item{
+        \textbf{MLFQ:} Multiple queues are utilized to introduce a notation of priority, rules are set such that priority of a process changes over time depending on the behavior of the process up to that point. We use 3 queues and each level has a quantum of 2.
+        \begin{itemize}
+            \item{
+                \textbf{Rule 1:} If Priority(A) \textgreater{} Priority(B), A runs
+            }
+            \item{
+                \textbf{Rule 2:} If Priority(A) = Priority(B), A \& B run in round-robin fashion using the time slice (quantum length) of the given queue.
+            }
+            \item{
+                \textbf{Rule 3:} When a job enters the system, it is placed at the highest priority (the topmost queue). 
+            }
+            \item{
+                \textbf{Rule 4:} Once a job uses up its time allotment at a given level (regardless of how many times it has given up the CPU), its priority is reduced (i.e., it moves down one queue).
+            }
+            \item{
+                \textbf{Rule 5:} After some time period S, move all the jobs in the system to the topmost queue).
+            }
+        \end{itemize}
+    } 
+
+
+\end{itemize}
+\section{Modelling a Process and Event}
+
+\subsection{Process}
+
+The \texttt{Process} structure represents an individual process in the simulation. It stores the process's static attributes, such as its ID, arrival time, and CPU/IO burst sequences, along with its dynamic state, which is updated as the process moves through the scheduler.
+
+\begin{figure}[htbp]
+\centering
+\begin{lstlisting}[language=C++, caption={Data structure representing an individual process.}, label={lst:process_struct}]
+struct Process {
+    int pid;
+    int arrival_time;
+    std::vector<int> cpu_bursts;
+    std::vector<int> io_bursts;
+
+    int io_burst_index = -1;
+    int cpu_burst_index = -1;
+    int cpu_burst_remaining;
+
+    int epoch = 0;
+    int quantum_remaining = 0;
+    int cpu_start_time = -1;
+
+    int current_queue = 0;
+
+    int first_service_time = -1;
+    int completion_time = -1;
+};
+\end{lstlisting}
+\end{figure}
+
+The fields can be grouped as follows:
+\begin{itemize}
+    \item \textbf{Static attributes:} \texttt{pid}, \texttt{arrival\_time}, \texttt{cpu\_bursts}, and \texttt{io\_bursts} describe the process's identity and its burst pattern.
+    \item \textbf{Execution state:} \texttt{cpu\_burst\_index}, \texttt{io\_burst\_index}, and \texttt{cpu\_burst\_remaining} track which burst the process is currently executing and how much of it is left.
+    \item \textbf{Scheduling state:} \texttt{epoch}, \texttt{quantum\_remaining}, \texttt{cpu\_start\_time}, and \texttt{current\_queue} record information used by the scheduling algorithm (e.g., which MLFQ queue the process currently occupies).
+    \item \textbf{Metrics:} \texttt{first\_service\_time} and \texttt{completion\_time} are used to compute performance statistics such as response time and turnaround time.
+\end{itemize}
+
+\subsection{Event Types}
+
+The \texttt{EventType} enumeration defines the kinds of events that can occur during the simulation. Each event in the event queue carries one of these values, and the simulator dispatches on it to decide what action to take when the event is processed. The explicit numeric values also define a tie-breaking priority: when two events occur at the same simulated time, the one with the lower value is processed first.
+
+\begin{figure}[htbp]
+\centering
+\begin{lstlisting}[language=C++, caption={Enumeration of simulation event types.}, label={lst:event_type_enum}]
+enum class EventType {
+    ARRIVAL = 0,
+    IO_COMPLETION = 1,
+    CPU_RELEASE = 2,
+    PRIORITY_BOOST = 3
+};
+\end{lstlisting}
+\end{figure}
+
+\begin{itemize}
+    \item \texttt{ARRIVAL} — a new process enters the system and must be placed on the ready queue.
+    \item \texttt{IO\_COMPLETION} — a process has finished its IO burst and returns to the ready queue.
+    \item \texttt{CPU\_RELEASE} — the cpu is done with the process running at that moment.
+    \item \texttt{PRIORITY\_BOOST} — a periodic aging event that moves all processes to the highest-priority queue to prevent starvation.
+\end{itemize}
+
+\subsection{Event}
+
+The \texttt{Event} structure represents a simulation event. Each event captures something that happens to a process at a specific point in simulated time. Events are maintained in a priority queue ordered by time, so the simulator always processes the earliest event next.
+
+\begin{figure}[htbp]
+\centering
+\begin{lstlisting}[language=C++, caption={Data structure representing a simulation event.}, label={lst:event_struct}]
+struct Event {
+    int pid;
+    int time;
+    int epoch;
+    int cpu_id;
+    EventType event;
+};
+\end{lstlisting}
+\end{figure}
+
+\begin{itemize}
+    \item \texttt{pid} — the ID of the process this event belongs to.
+    \item \texttt{time} — the simulated time at which the event occurs.
+    \item \texttt{epoch} — the scheduling epoch of the process, used to distinguish stale events for a process that has since been rescheduled (an event from an older epoch can be safely ignored).
+    \item \texttt{cpu\_id} — the CPU on which the process was running, so the simulator knows which CPU becomes free.
+    \item \texttt{event} — the type of event, one of \texttt{ARRIVAL}, \texttt{IO\_COMPLETION}, \texttt{CPU\_RELEASE}, or \texttt{PRIORITY\_BOOST} (see Listing~\ref{lst:event_type_enum}).
+\end{itemize}
+\section{Metrics and Graphs}
+
+\pgfplotsset{
+    benchbar/.style={
+        ybar,
+        bar width=5pt,
+        width=\textwidth,
+        height=7cm,
+        ymin=0,
+        symbolic x coords={1,2,3,4,5},
+        xtick=data,
+        xlabel={Test file},
+        enlarge x limits=0.15,
+        legend style={
+            at={(0.5,-0.25)},
+            anchor=north,
+            legend columns=-1,
+            draw=none,
+        },
+        grid=major,
+        grid style={dashed},
+    }
+}
+
+% ============================================================
+% Single CPU
+% ============================================================
+
+\subsection{Single CPU}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    benchbar,
+    ylabel={Average turnaround time}
+]
+
+\addplot coordinates {
+    (1,363.333)
+    (2,525)
+    (3,14.5)
+    (4,123)
+    (5,189)
+};
+
+\addplot coordinates {
+    (1,459.33)
+    (2,595)
+    (3,14.5)
+    (4,132.667)
+    (5,213.883)
+};
+
+\addplot coordinates {
+    (1,461.333)
+    (2,595)
+    (3,14.5)
+    (4,134)
+    (5,209.833)
+};
+
+\addplot coordinates {
+    (1,461.333)
+    (2,597)
+    (3,14.5)
+    (4,130.333)
+    (5,205)
+};
+
+\legend{FIFO, RR, MLFQ, MLFQ-BOOST}
+
+\end{axis}
+\end{tikzpicture}
+\caption{Average turnaround time for 1 CPU.}
+\label{fig:tat_cpu1}
+\end{figure}
+
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    benchbar,
+    ylabel={Average response time}
+]
+
+\addplot coordinates {
+    (1,163.33)
+    (2,75)
+    (3,1.5)
+    (4,15)
+    (5,23)
+};
+
+\addplot coordinates {
+    (1,1.333)
+    (2,3)
+    (3,1.5)
+    (4,1)
+    (5,4)
+};
+
+\addplot coordinates {
+    (1,0.6667)
+    (2,3)
+    (3,1.5)
+    (4,0)
+    (5,2)
+};
+
+\addplot coordinates {
+    (1,0.6667)
+    (2,3)
+    (3,1.5)
+    (4,0)
+    (5,2)
+};
+
+\legend{FIFO, RR, MLFQ, MLFQ-BOOST}
+
+\end{axis}
+\end{tikzpicture}
+\caption{Average response time for 1 CPU.}
+\label{fig:rt_cpu1}
+\end{figure}
+
+
+% ============================================================
+% Two CPUs
+% ============================================================
+\newpage
+\subsection{Two CPUs}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    benchbar,
+    ylabel={Average turnaround time}
+]
+
+\addplot coordinates {
+    (1,230)
+    (2,275)
+    (3,13.5)
+    (4,81.333)
+    (5,104.333)
+};
+
+\addplot coordinates {
+    (1,260)
+    (2,305)
+    (3,13.5)
+    (4,82.333)
+    (5,108.5)
+};
+
+\addplot coordinates {
+    (1,259.333)
+    (2,305)
+    (3,13.5)
+    (4,79)
+    (5,107.833)
+};
+
+\addplot coordinates {
+    (1,250)
+    (2,306.5)
+    (3,13.5)
+    (4,78)
+    (5,110.167)
+};
+
+\legend{FIFO, RR, MLFQ, MLFQ-BOOST}
+
+\end{axis}
+\end{tikzpicture}
+\caption{Average turnaround time for 2 CPUs.}
+\label{fig:tat_cpu2}
+\end{figure}
+
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    benchbar,
+    ylabel={Average response time}
+]
+
+\addplot coordinates {
+    (1,30)
+    (2,25)
+    (3,0.5)
+    (4,1.6667)
+    (5,6.333)
+};
+
+\addplot coordinates {
+    (1,0)
+    (2,1)
+    (3,0.5)
+    (4,0.333)
+    (5,1.333)
+};
+
+\addplot coordinates {
+    (1,0)
+    (2,1)
+    (3,0.5)
+    (4,0)
+    (5,0.6667)
+};
+
+\addplot coordinates {
+    (1,0)
+    (2,1)
+    (3,0.5)
+    (4,0)
+    (5,0.6667)
+};
+
+\legend{FIFO, RR, MLFQ, MLFQ-BOOST}
+
+\end{axis}
+\end{tikzpicture}
+\caption{Average response time for 2 CPUs.}
+\label{fig:rt_cpu2}
+\end{figure}
+
+\newpage
+\section{Inference}
+
+\end{document}
