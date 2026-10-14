@@ -1,0 +1,338 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{caption}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+
+\pgfplotscreateplotcyclelist{tenseries}{
+  color=red,mark=*\\
+  color=blue,mark=square*\\
+  color=green!50!black,mark=triangle*\\
+  color=orange,mark=diamond*\\
+  color=violet,mark=pentagon*\\
+  color=cyan!70!black,mark=o\\
+  color=magenta,mark=square\\
+  color=brown,mark=triangle\\
+  color=gray,mark=diamond\\
+  color=black,mark=x\\
+}
+\pgfplotsset{
+  report plot/.style={
+    width=\linewidth, height=7.5cm, grid=major, cycle list name=tenseries,
+    legend columns=5, legend style={at={(0.5,-0.3)}, anchor=north, font=\scriptsize}
+  }
+}
+\newcommand{\fit}[1]{\resizebox{\ifdim\width>\linewidth\linewidth\else\width\fi}{!}{#1}}
+
+\begin{document}
+
+\section{Setup and Assumptions}
+
+\subsection{Simulated system}
+The simulator models a 32-bit virtual address space with 4\,KB pages, so an address splits into a 20-bit virtual page number (VPN) and a 12-bit offset, giving $2^{20}$ virtual pages. Only the lower 32 bits of each trace address are used (the traces contain addresses wider than 32 bits). The TLB has 128 entries, is fully associative with LRU replacement, and is empty at the start of every run. Instruction/data and read/write flags in the traces are not used.
+
+\subsection{Cost model}
+Every trace line is one memory access of the benchmark. Let $w$ be the number of memory accesses needed to walk the page table ($w=1$ for the single-level table, $w=2$ for the two-level table). The cycles charged per access are:
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+Case & Cycles \\
+\midrule
+No TLB & $200\,w + 200$ \\
+TLB hit & $1 + 200$ \\
+TLB miss & $1 + 200\,w + 200$ \\
+Page replacement (extra, Part IV only) & $+20{,}000{,}000$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The final 200 cycles is the access to the data itself. A page fault into a free frame costs the same as any page-table walk and no disk time, since the first pages come for free; disk time is charged only when a resident page has to be replaced. We do not model where the page table itself is stored in physical memory: page-table pages do not occupy frames, and only the cost of walking them is charged.
+
+\subsection{Frame management scheme}
+\begin{itemize}
+\item \textbf{Parts I--III} (more frames than pages): frames are handed out sequentially, $0,1,2,\dots$, in the order pages are first touched, and are never freed. The number of frames used is therefore the number of distinct pages touched.
+\item \textbf{Part IV} (limited frames): frames are initially handed out the same way. Once all frames are in use, a page fault evicts the least recently used page. Recency is kept in a doubly linked list over the frames; every access (TLB hit or not) moves the accessed page's frame to the most-recently-used end, and the victim is the frame at the least-recently-used end. On eviction the simulator removes the victim from the page table, invalidates its TLB entry (so the TLB can never return a translation to a frame that has been reused), charges the disk cost, and gives the freed frame to the faulting page.
+\end{itemize}
+
+\subsection{Page tables}
+The \emph{single-level} table is an array of $2^{20}$ entries indexed by the VPN. The \emph{two-level} table splits the VPN into a 10-bit directory index and a 10-bit second-level index. Second-level tables (1024 entries each) are allocated only when the first page they cover is mapped, and are freed when their last valid entry is removed. Each second-level table therefore covers 1024 pages (a 4\,MB region of the address space).
+
+\subsection{Statistics}
+\begin{description}
+\item[A. Frames used] the peak number of frames in use.
+\item[B. Hot pages] the number of accesses to every virtual page, from which the cumulative access share of the hottest pages is computed.
+\item[C. Cycles] total cycles over the trace, using the cost model above.
+\item[D. Page table utilization] number of distinct pages accessed divided by the number of page table entries allocated. For the single-level table the denominator is $2^{20}$. For the two-level table it is $1024 \times$ (number of live second-level tables); the fixed 1024-entry top-level directory is \emph{not} counted.
+\item[E. Hash] $H \leftarrow (H \oplus \mathit{frame}) \times 1099511628211 \pmod{2^{64}}$, applied once per access with $H=0$ initially.
+\end{description}
+
+\subsection{Environment}
+All numbers come from one run of each program on an Intel Core Ultra 7 258V (8 logical CPUs, 30\,GB RAM), compiled with g++ 13.3.0 using \texttt{-std=c++17 -O2}. The ten benchmark traces contain between 11.5 and 12.9 million accesses each. Traces are streamed from disk in 1\,MB chunks and parsed by hand.
+
+\section{Part I: Single-Level Page Table}
+
+Table~\ref{tab:part1} shows the results with a single-level table, no TLB, and enough frames that no page is ever evicted.
+
+\begin{table}[ht]
+\centering\small
+\caption{Part I results (single-level page table, no TLB). ``Top-10\% share'' is the fraction of all accesses that go to the most-accessed 10\% of the pages the benchmark touches.}
+\label{tab:part1}
+\fit{
+\begin{tabular}{lrrrrr}
+\toprule
+Benchmark & Accesses (M) & Frames used & PT util.\ (\%) & Top-10\% share (\%) & Cycles ($10^9$) \\
+\midrule
+blender & 12.37 & 1551 & 0.1479 & 99.2 & 4.948 \\
+fotonik3d & 12.89 & 1602 & 0.1528 & 91.3 & 5.156 \\
+gcc & 12.47 & 990 & 0.0944 & 82.5 & 4.989 \\
+imagick & 11.55 & 96 & 0.0092 & 89.1 & 4.620 \\
+lbm & 12.84 & 2131 & 0.2032 & 94.1 & 5.137 \\
+mcf & 12.47 & 1597 & 0.1523 & 97.9 & 4.990 \\
+perlbench & 12.57 & 630 & 0.0601 & 89.3 & 5.027 \\
+x264 & 11.72 & 234 & 0.0223 & 90.0 & 4.689 \\
+xalancbmk & 11.97 & 14325 & 1.3661 & 95.2 & 4.789 \\
+xz & 11.85 & 8037 & 0.7665 & 99.5 & 4.741 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Frames used (A).} Each benchmark touches only 96 to 14\,325 distinct pages out of the $2^{20}=1{,}048{,}576$ available, so that many frames are used.
+
+\paragraph{Hot pages (B).} Figure~\ref{fig:hot} plots, for each benchmark, the cumulative share of accesses covered by the hottest pages (pages sorted by access count, hottest first). In every benchmark the hottest 10\% of touched pages account for 82.5\%--99.5\% of all accesses (Table~\ref{tab:part1}), which supports the hypothesis that a small fraction of pages sees a large fraction of the accesses. The fractions in this figure are of the pages each benchmark \emph{touches}, not of the whole address space.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}
+\begin{axis}[report plot, xmode=log, xmin=5e-5, xmax=1, ymin=0, ymax=1,
+  xlabel={Fraction of touched pages (hottest first, log scale)},
+  ylabel={Cumulative fraction of accesses}]
+\addplot+[no marks, thick] coordinates {(0.000645,0.517522) (0.001289,0.735126) (0.001934,0.816646) (0.002579,0.855931) (0.003224,0.87452) (0.003868,0.884043) (0.004513,0.892535) (0.005158,0.899362) (0.005803,0.905667) (0.006447,0.911282) (0.007092,0.916724) (0.007737,0.921454) (0.008382,0.925591) (0.009671,0.932042) (0.010961,0.93741) (0.01225,0.942146) (0.01354,0.946414) (0.014829,0.949895) (0.016119,0.952873) (0.018053,0.956897) (0.019987,0.960123) (0.021921,0.962877) (0.023856,0.965244) (0.02579,0.967336) (0.028369,0.969987) (0.030948,0.972293) (0.033527,0.974281) (0.03675,0.976365) (0.039974,0.978243) (0.043198,0.979835) (0.047066,0.981494) (0.050935,0.98292) (0.055448,0.984427) (0.059961,0.985772) (0.065119,0.987022) (0.070922,0.988239) (0.076725,0.989255) (0.083172,0.990177) (0.090264,0.991054) (0.098001,0.991878) (0.106383,0.992618) (0.115409,0.993269) (0.125081,0.993851) (0.135397,0.994383) (0.146357,0.994848) (0.158607,0.995276) (0.171502,0.995673) (0.185687,0.996051) (0.201161,0.996396) (0.217279,0.9967) (0.234687,0.99699) (0.25403,0.997279) (0.274662,0.997554) (0.297228,0.997817) (0.321083,0.998069) (0.346873,0.99831) (0.375242,0.998548) (0.405545,0.998775) (0.438427,0.99898) (0.473888,0.999162) (0.511928,0.999324) (0.553191,0.999458) (0.597679,0.999589) (0.646035,0.999696) (0.698259,0.999778) (0.754352,0.999857) (0.814958,0.999917) (0.880722,0.99996) (0.951644,0.999989) (1,1)};
+\addlegendentry{blender}
+\addplot+[no marks, thick] coordinates {(0.000624,0.771477) (0.001248,0.857904) (0.001873,0.882925) (0.002497,0.895435) (0.003121,0.899706) (0.003745,0.899812) (0.00437,0.899919) (0.004994,0.900025) (0.005618,0.900132) (0.006242,0.900238) (0.006866,0.900345) (0.007491,0.900452) (0.008115,0.900558) (0.009363,0.900771) (0.010612,0.900982) (0.01186,0.901192) (0.013109,0.9014) (0.014357,0.901607) (0.015605,0.901812) (0.016854,0.902017) (0.018727,0.902324) (0.020599,0.902632) (0.022472,0.902939) (0.024345,0.903246) (0.026841,0.903656) (0.029338,0.904065) (0.031835,0.904475) (0.034956,0.904987) (0.038077,0.905478) (0.041199,0.905872) (0.044944,0.906345) (0.048689,0.906818) (0.053059,0.90737) (0.057428,0.907922) (0.062422,0.908552) (0.067416,0.909183) (0.073034,0.909892) (0.079276,0.91068) (0.086142,0.911547) (0.093633,0.912493) (0.101124,0.913439) (0.109238,0.914463) (0.117978,0.915566) (0.127965,0.916826) (0.138577,0.918164) (0.149813,0.919582) (0.162297,0.921156) (0.175406,0.92281) (0.189763,0.924547) (0.205368,0.92633) (0.222222,0.928249) (0.240325,0.930307) (0.259675,0.932497) (0.280899,0.934897) (0.303371,0.937435) (0.327715,0.940164) (0.353933,0.943085) (0.382647,0.946261) (0.413858,0.949706) (0.447566,0.953426) (0.48377,0.957397) (0.522472,0.96163) (0.564295,0.966204) (0.609863,0.971187) (0.659176,0.976537) (0.712235,0.982287) (0.769663,0.987543) (0.831461,0.991026) (0.898252,0.994708) (0.970662,0.998653) (1,1)};
+\addlegendentry{fotonik3d}
+\addplot+[no marks, thick] coordinates {(0.00101,0.089693) (0.00202,0.162766) (0.00303,0.195605) (0.00404,0.221839) (0.005051,0.247422) (0.006061,0.269137) (0.007071,0.290279) (0.008081,0.308542) (0.009091,0.325747) (0.010101,0.342755) (0.011111,0.357202) (0.012121,0.371279) (0.013131,0.385356) (0.015152,0.410077) (0.017172,0.431933) (0.019192,0.453135) (0.021212,0.473415) (0.023232,0.492057) (0.025253,0.508973) (0.028283,0.532381) (0.031313,0.553475) (0.034343,0.573815) (0.037374,0.593023) (0.040404,0.611302) (0.044444,0.634484) (0.048485,0.656198) (0.052525,0.675781) (0.057576,0.698026) (0.062626,0.717701) (0.067677,0.73572) (0.073737,0.755996) (0.079798,0.774964) (0.086869,0.794578) (0.093939,0.811899) (0.10202,0.829614) (0.111111,0.846949) (0.120202,0.861835) (0.130303,0.876294) (0.141414,0.890461) (0.153535,0.904701) (0.166667,0.918239) (0.180808,0.930686) (0.19596,0.942105) (0.212121,0.95171) (0.229293,0.960005) (0.248485,0.967788) (0.268687,0.974448) (0.290909,0.980326) (0.315152,0.985282) (0.340404,0.989171) (0.367677,0.992284) (0.39798,0.994697) (0.430303,0.996305) (0.465657,0.997358) (0.50303,0.998054) (0.543434,0.998544) (0.587879,0.99892) (0.635354,0.999198) (0.686869,0.999421) (0.742424,0.999625) (0.80202,0.999803) (0.866667,0.999926) (0.936364,0.999987) (1,1)};
+\addlegendentry{gcc}
+\addplot+[no marks, thick] coordinates {(0.010417,0.865022) (0.020833,0.86848) (0.03125,0.871938) (0.041667,0.875396) (0.052083,0.878854) (0.0625,0.882312) (0.072917,0.885763) (0.083333,0.889207) (0.09375,0.891127) (0.104167,0.892883) (0.114583,0.894585) (0.125,0.896287) (0.135417,0.897989) (0.15625,0.901393) (0.177083,0.904797) (0.197917,0.908201) (0.21875,0.911605) (0.239583,0.915009) (0.260417,0.918413) (0.291667,0.923519) (0.322917,0.928625) (0.354167,0.933731) (0.385417,0.938837) (0.416667,0.943943) (0.458333,0.950751) (0.5,0.957544) (0.541667,0.964266) (0.59375,0.972667) (0.645833,0.980803) (0.697917,0.988023) (0.760417,0.994234) (0.822917,0.997939) (0.895833,0.999642) (0.96875,0.999972) (1,1)};
+\addlegendentry{imagick}
+\addplot+[no marks, thick] coordinates {(0.000469,0.685551) (0.001408,0.912389) (0.002346,0.925209) (0.003285,0.92536) (0.004223,0.925512) (0.005162,0.925664) (0.0061,0.925815) (0.007039,0.925967) (0.007977,0.926119) (0.008916,0.92627) (0.009855,0.926422) (0.010793,0.926574) (0.011732,0.926725) (0.013609,0.927029) (0.015486,0.927332) (0.017363,0.927635) (0.01924,0.927939) (0.021117,0.928242) (0.022994,0.928545) (0.024871,0.928849) (0.027687,0.929304) (0.030502,0.929759) (0.033318,0.930214) (0.036133,0.930669) (0.039887,0.931275) (0.043641,0.931882) (0.047396,0.932489) (0.052088,0.933247) (0.056781,0.934006) (0.061473,0.934764) (0.067105,0.935674) (0.072736,0.936584) (0.079305,0.937646) (0.085875,0.938707) (0.093383,0.939919) (0.100892,0.94113) (0.109338,0.942493) (0.118724,0.944006) (0.129047,0.945671) (0.139371,0.947336) (0.150634,0.949152) (0.162834,0.95112) (0.175974,0.953239) (0.190052,0.95551) (0.206007,0.958083) (0.2229,0.960807) (0.240732,0.963617) (0.260441,0.966685) (0.282027,0.970038) (0.30549,0.973682) (0.330831,0.975612) (0.358048,0.977238) (0.387142,0.978972) (0.418114,0.980816) (0.451901,0.982823) (0.488503,0.984998) (0.527921,0.987337) (0.570155,0.989831) (0.616143,0.991671) (0.665885,0.992997) (0.719381,0.994142) (0.777569,0.995387) (0.84045,0.996722) (0.908024,0.998154) (0.981229,0.999692) (1,1)};
+\addlegendentry{lbm}
+\addplot+[no marks, thick] coordinates {(0.000626,0.715633) (0.001252,0.794566) (0.001879,0.864026) (0.002505,0.88127) (0.003131,0.896874) (0.003757,0.912262) (0.004383,0.919846) (0.005009,0.926814) (0.005636,0.929927) (0.006262,0.932322) (0.006888,0.93469) (0.007514,0.93696) (0.00814,0.939206) (0.009393,0.943657) (0.010645,0.947999) (0.011897,0.952239) (0.01315,0.956261) (0.014402,0.960112) (0.015654,0.963934) (0.016907,0.967673) (0.018785,0.973001) (0.020664,0.974664) (0.022542,0.974794) (0.024421,0.974912) (0.026925,0.975062) (0.02943,0.975206) (0.031935,0.975345) (0.035066,0.975515) (0.038197,0.975684) (0.041327,0.975846) (0.045085,0.976036) (0.048842,0.976221) (0.053225,0.976433) (0.057608,0.976642) (0.062617,0.976879) (0.067627,0.977114) (0.073262,0.977376) (0.079524,0.977664) (0.086412,0.977979) (0.093926,0.978317) (0.102066,0.978679) (0.110833,0.979065) (0.120225,0.979476) (0.130244,0.97991) (0.140889,0.980367) (0.152786,0.980872) (0.16531,0.981401) (0.179086,0.981977) (0.193488,0.982572) (0.209142,0.983212) (0.226049,0.983898) (0.244208,0.984625) (0.264245,0.985421) (0.285535,0.986258) (0.308704,0.987157) (0.333751,0.988116) (0.360676,0.989132) (0.390106,0.990219) (0.421415,0.991355) (0.455229,0.992547) (0.492173,0.993808) (0.531622,0.995097) (0.574202,0.99639) (0.620539,0.997543) (0.670632,0.99845) (0.724483,0.999118) (0.782718,0.999582) (0.845961,0.999825) (0.914214,0.999949) (0.987477,0.999998) (1,1)};
+\addlegendentry{mcf}
+\addplot+[no marks, thick] coordinates {(0.001587,0.08566) (0.003175,0.140539) (0.004762,0.19061) (0.006349,0.235364) (0.007937,0.277323) (0.009524,0.316524) (0.011111,0.352316) (0.012698,0.387416) (0.014286,0.419303) (0.015873,0.451067) (0.01746,0.480933) (0.019048,0.510404) (0.020635,0.537507) (0.02381,0.585369) (0.026984,0.622144) (0.030159,0.654372) (0.033333,0.680794) (0.036508,0.703494) (0.039683,0.722668) (0.044444,0.750289) (0.049206,0.774607) (0.053968,0.796945) (0.05873,0.813765) (0.063492,0.827401) (0.069841,0.842293) (0.07619,0.855306) (0.08254,0.866909) (0.090476,0.879932) (0.098413,0.891392) (0.106349,0.900714) (0.115873,0.910263) (0.125397,0.918654) (0.136508,0.927688) (0.147619,0.935549) (0.160317,0.943195) (0.174603,0.950479) (0.188889,0.956638) (0.204762,0.9623) (0.222222,0.967367) (0.24127,0.972034) (0.261905,0.976543) (0.284127,0.980415) (0.307937,0.983645) (0.333333,0.986471) (0.360317,0.988805) (0.390476,0.990879) (0.422222,0.99264) (0.457143,0.994331) (0.495238,0.995737) (0.534921,0.99682) (0.577778,0.997736) (0.625397,0.998481) (0.67619,0.999091) (0.731746,0.999512) (0.790476,0.999774) (0.853968,0.999919) (0.92381,0.999983) (0.998413,1) (1,1)};
+\addlegendentry{perlbench}
+\addplot+[no marks, thick] coordinates {(0.004274,0.227722) (0.008547,0.36542) (0.012821,0.466001) (0.017094,0.53556) (0.021368,0.586901) (0.025641,0.623498) (0.029915,0.658626) (0.034188,0.691937) (0.038462,0.723541) (0.042735,0.754407) (0.047009,0.785173) (0.051282,0.807933) (0.055556,0.827369) (0.064103,0.849806) (0.07265,0.867681) (0.081197,0.880545) (0.089744,0.89098) (0.098291,0.899816) (0.106838,0.907037) (0.119658,0.916028) (0.132479,0.924304) (0.145299,0.931377) (0.15812,0.937673) (0.17094,0.943441) (0.188034,0.950455) (0.205128,0.956953) (0.222222,0.961712) (0.24359,0.96685) (0.264957,0.971345) (0.286325,0.975013) (0.311966,0.978317) (0.337607,0.981083) (0.367521,0.98402) (0.397436,0.986469) (0.431624,0.98919) (0.470085,0.992071) (0.508547,0.994331) (0.551282,0.996088) (0.598291,0.997569) (0.649573,0.998694) (0.705128,0.999261) (0.764957,0.99957) (0.82906,0.99977) (0.897436,0.999907) (0.970085,0.999986) (1,1)};
+\addlegendentry{x264}
+\addplot+[no marks, thick] coordinates {(7e-05,0.610421) (0.001047,0.921173) (0.002024,0.926216) (0.003002,0.928227) (0.003979,0.929489) (0.004956,0.930428) (0.005934,0.93107) (0.006911,0.931669) (0.007888,0.932267) (0.008866,0.932866) (0.009843,0.933419) (0.01082,0.933875) (0.011798,0.934267) (0.012775,0.934624) (0.014729,0.93526) (0.016684,0.935836) (0.018639,0.936381) (0.020593,0.93691) (0.022548,0.937426) (0.024503,0.937926) (0.027435,0.938646) (0.030366,0.93934) (0.033298,0.940019) (0.03623,0.94068) (0.039162,0.941323) (0.043072,0.942152) (0.046981,0.942959) (0.05089,0.94375) (0.055777,0.944719) (0.060663,0.945667) (0.06555,0.946587) (0.071414,0.94765) (0.077277,0.948682) (0.084119,0.949859) (0.09096,0.951011) (0.098778,0.9523) (0.107574,0.953708) (0.11637,0.955065) (0.126143,0.956512) (0.136894,0.958039) (0.148621,0.959652) (0.161326,0.961354) (0.175009,0.963131) (0.189668,0.964956) (0.205305,0.966768) (0.22192,0.968575) (0.240489,0.970502) (0.260035,0.972446) (0.281536,0.974491) (0.304991,0.976584) (0.329424,0.97854) (0.355812,0.980501) (0.385131,0.982556) (0.416405,0.984624) (0.450611,0.986742) (0.486771,0.988773) (0.525864,0.990576) (0.568866,0.992289) (0.614799,0.993951) (0.664642,0.995598) (0.718394,0.997182) (0.776056,0.998563) (0.838604,0.999279) (0.906038,0.999723) (0.979337,0.999971) (1,1)};
+\addlegendentry{xalancbmk}
+\addplot+[no marks, thick] coordinates {(0.000124,0.286147) (0.00112,0.926325) (0.002115,0.965404) (0.003111,0.97586) (0.004106,0.980468) (0.005101,0.983303) (0.006097,0.984932) (0.007092,0.986133) (0.008088,0.986947) (0.009083,0.987545) (0.010078,0.988008) (0.011074,0.988396) (0.012069,0.988734) (0.013065,0.989045) (0.015055,0.989581) (0.017046,0.990045) (0.019037,0.990444) (0.021028,0.990779) (0.023019,0.99106) (0.025009,0.991314) (0.027996,0.991671) (0.030982,0.99199) (0.033968,0.992278) (0.036954,0.992542) (0.03994,0.992777) (0.043922,0.993062) (0.047903,0.993322) (0.051885,0.993557) (0.056862,0.99382) (0.061839,0.994059) (0.066816,0.994282) (0.072788,0.994531) (0.078761,0.994755) (0.085729,0.994992) (0.092696,0.995206) (0.100659,0.995433) (0.109618,0.995667) (0.118577,0.995876) (0.128531,0.996088) (0.13948,0.996301) (0.151425,0.996509) (0.164365,0.996715) (0.1783,0.996915) (0.193231,0.997108) (0.209158,0.997291) (0.226079,0.997469) (0.244992,0.997649) (0.2649,0.997819) (0.286799,0.997997) (0.310688,0.998166) (0.335573,0.998333) (0.362449,0.998482) (0.392311,0.998644) (0.424163,0.998792) (0.459002,0.998934) (0.495832,0.999084) (0.535648,0.999204) (0.579445,0.999323) (0.626229,0.99945) (0.676994,0.999574) (0.731741,0.999649) (0.790469,0.999728) (0.854174,0.999815) (0.922857,0.999908) (0.997512,0.999998) (1,1)};
+\addlegendentry{xz}
+\end{axis}
+\end{tikzpicture}
+\caption{Cumulative access share of the hottest pages for each benchmark (Part I). Each curve is sampled at log-spaced points.}
+\label{fig:hot}
+\end{figure}
+
+\paragraph{Page table utilization (D).} Only 0.009\%--1.37\% of the entries of the single-level table are ever accessed. The table always has $2^{20}$ entries allocated, whatever the benchmark touches.
+
+\paragraph{Cycles (C) and hash (E).} With no TLB, every access costs 400 cycles (one table access plus the data access), so total cycles are exactly $400 \times$ accesses (4.620--5.156 billion cycles). The hashes are listed in \texttt{results/part\_i.csv}.
+
+\section{Part II: Two-Level Page Table}
+
+\begin{table}[ht]
+\centering\small
+\caption{Part II results (two-level page table, no TLB), with the single-level numbers for comparison. ``L2 tables'' is the number of second-level tables allocated. The frames used and hashes are identical to Part I.}
+\label{tab:part2}
+\fit{
+\begin{tabular}{lrrrrrr}
+\toprule
+Benchmark & L2 tables & Entries alloc.\ (2L) & Util.\ 2L (\%) & Util.\ 1L (\%) & Cycles 2L ($10^9$) & Cycles 1L ($10^9$) \\
+\midrule
+blender & 47 & 48\,128 & 3.22 & 0.1479 & 7.422 & 4.948 \\
+fotonik3d & 14 & 14\,336 & 11.17 & 0.1528 & 7.734 & 5.156 \\
+gcc & 70 & 71\,680 & 1.38 & 0.0944 & 7.484 & 4.989 \\
+imagick & 5 & 5\,120 & 1.88 & 0.0092 & 6.929 & 4.620 \\
+lbm & 6 & 6\,144 & 34.68 & 0.2032 & 7.706 & 5.137 \\
+mcf & 13 & 13\,312 & 12.00 & 0.1523 & 7.485 & 4.990 \\
+perlbench & 48 & 49\,152 & 1.28 & 0.0601 & 7.541 & 5.027 \\
+x264 & 11 & 11\,264 & 2.08 & 0.0223 & 7.033 & 4.689 \\
+xalancbmk & 54 & 55\,296 & 25.91 & 1.3661 & 7.183 & 4.789 \\
+xz & 43 & 44\,032 & 18.25 & 0.7665 & 7.111 & 4.741 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Hash.} The hash computed with the two-level table is identical to the one from Part I for all ten benchmarks. This is expected: the hash depends only on the sequence of frame numbers, the frame allocator is the same in both simulators, and the page table type does not affect which frame a page gets.
+
+\paragraph{Space.} The number of pages touched is the same for both table types, so the difference in utilization (Table~\ref{tab:part2}) comes entirely from the denominator. The two-level table allocates only the second-level tables that cover touched pages, namely 5 to 70 tables per benchmark (one per distinct 4\,MB region touched, since nothing is evicted), against the fixed $2^{20}$ entries of the single-level table. Its utilization is 1.28\%--34.7\%, compared with 0.009\%--1.37\% for the single-level table. The top-level directory (1024 entries) is a fixed cost that is not included in these figures.
+
+\paragraph{Time.} Each walk of the two-level table needs one more memory access, so every access costs 600 cycles instead of 400, and the total cycles are exactly 1.5 times the single-level total for every benchmark. The two-level table thus trades extra cycles for less allocated page-table space.
+
+\section{Part III: Adding a TLB}
+
+\begin{table}[ht]
+\centering\small
+\caption{Part III results (128-entry fully associative LRU TLB). Speedup is the Part I/II cycle count (no TLB) divided by the cycle count with the TLB, for the same page table type. The TLB hit rate is the same for both page table types.}
+\label{tab:part3}
+\fit{
+\begin{tabular}{lrrrrr}
+\toprule
+Benchmark & TLB hit rate (\%) & Cycles 1L ($10^9$) & Cycles 2L ($10^9$) & Speedup 1L & Speedup 2L \\
+\midrule
+blender & 99.9398 & 2.488 & 2.489 & 1.99 & 2.98 \\
+fotonik3d & 99.9867 & 2.591 & 2.592 & 1.99 & 2.98 \\
+gcc & 99.8874 & 2.510 & 2.513 & 1.99 & 2.98 \\
+imagick & 99.9992 & 2.321 & 2.321 & 1.99 & 2.99 \\
+lbm & 99.9789 & 2.582 & 2.583 & 1.99 & 2.98 \\
+mcf & 99.4421 & 2.521 & 2.535 & 1.98 & 2.95 \\
+perlbench & 99.5484 & 2.538 & 2.549 & 1.98 & 2.96 \\
+x264 & 99.9659 & 2.357 & 2.358 & 1.99 & 2.98 \\
+xalancbmk & 99.8673 & 2.410 & 2.413 & 1.99 & 2.98 \\
+xz & 99.7669 & 2.388 & 2.393 & 1.99 & 2.97 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Hit rate (A).} The TLB hit rate is 99.44\%--99.9992\% across the benchmarks (Table~\ref{tab:part3}); the lowest is mcf. The rate is identical for the single-level and two-level tables, because the TLB logic does not depend on the page table type: both simulators present it with the same stream of virtual page numbers.
+
+\paragraph{Cycles (B).} With the TLB, total cycles drop to 2.321--2.591 billion. This is a speedup of 1.98--1.99 times for the single-level table and 2.95--2.99 times for the two-level table over the no-TLB runs. The two-level table benefits more because a TLB hit skips the entire page-table walk, and the walk is more expensive for the two-level table. With the TLB, the difference between the two table types shrinks to 200 cycles per TLB miss (one extra memory access per walk), which is a small fraction of the total.
+
+\section{Part IV: Limited Physical Memory}
+
+The traces touch at most 14\,325 pages, which is less than $2^{14}=16384$ frames, i.e.\ less than $1/64$ of the virtual address space. Physical memory sizes of $1/2$, $1/4$, $1/8$, $1/16$ and $1/32$ of the virtual address space therefore give exactly the same result as $1/2$: nothing is ever evicted. We ran physical memory sizes of $1/262144$, $1/65536$, $1/16384$, $1/4096$, $1/1024$, $1/256$, $1/64$ and $1/2$ of the virtual address space ($2^{2}$, $2^{4}$, $2^{6}$, $2^{8}$, $2^{10}$, $2^{12}$, $2^{14}$ and $2^{19}$ frames). All runs use the TLB. A page fault is any first load of a page into memory, including loads into a free frame; an eviction is a fault that has to replace a resident page, and only evictions are charged the 20 million cycle disk cost.
+
+\begin{table}[ht]
+\centering\small
+\caption{Part IV: page faults per million accesses for each physical memory size (columns are numbers of frames). The fault counts are identical for the single-level and two-level tables. The 16384-frame column equals the compulsory (first-touch) faults.}
+\label{tab:part4}
+\fit{
+\begin{tabular}{lrrrrrr}
+\toprule
+Benchmark & 4 & 16 & 64 & 256 & 1024 & 16384 \\
+\midrule
+blender & 32\,489 & 7\,382 & 3\,699 & 381 & 151 & 125 \\
+fotonik3d & 139\,129 & 3\,103 & 133 & 133 & 133 & 124 \\
+gcc & 71\,887 & 19\,926 & 3\,199 & 400 & 79 & 79 \\
+imagick & 641 & 581 & 568 & 8 & 8 & 8 \\
+lbm & 37\,761 & 523 & 211 & 211 & 211 & 166 \\
+mcf & 80\,078 & 16\,953 & 7\,046 & 3\,253 & 131 & 128 \\
+perlbench & 91\,255 & 29\,318 & 9\,100 & 1\,620 & 50 & 50 \\
+x264 & 14\,646 & 1\,631 & 539 & 20 & 20 & 20 \\
+xalancbmk & 46\,800 & 2\,082 & 1\,381 & 1\,252 & 1\,251 & 1\,197 \\
+xz & 42\,434 & 10\,963 & 2\,779 & 2\,029 & 1\,310 & 678 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}
+\begin{axis}[report plot, xmode=log, ymode=log,
+  xlabel={Physical memory (frames, log scale)},
+  ylabel={Evictions per access}]
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.03248863) (16,0.00738046) (64,0.00369358) (256,0.00036008) (1024,6.864e-05)};
+\addlegendentry{blender}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.13912887) (16,0.00310186) (64,0.00012824) (256,0.00011334) (1024,5.376e-05)};
+\addlegendentry{fotonik3d}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.07188648) (16,0.01992519) (64,0.00319362) (256,0.00037985)};
+\addlegendentry{gcc}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.00064076) (16,0.00057989) (64,0.0005624)};
+\addlegendentry{imagick}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.0377607) (16,0.00052167) (64,0.00020555) (256,0.0001906) (1024,0.00013081)};
+\addlegendentry{lbm}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.08007793) (16,0.01695143) (64,0.00704123) (256,0.00323275) (1024,4.922e-05)};
+\addlegendentry{mcf}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.09125435) (16,0.02931707) (64,0.00909537) (256,0.00160001)};
+\addlegendentry{perlbench}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.0146455) (16,0.00162968) (64,0.00053364)};
+\addlegendentry{x264}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.04679926) (16,0.00208023) (64,0.00137593) (256,0.00123085) (1024,0.00116519) (4096,0.00090818)};
+\addlegendentry{xalancbmk}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.04243398) (16,0.01096166) (64,0.00277357) (256,0.00200739) (1024,0.00122365) (4096,0.00043207)};
+\addlegendentry{xz}
+\end{axis}
+\end{tikzpicture}
+\caption{Evictions per access versus physical memory size (two-level table; identical for the single-level table). Runs with zero evictions cannot be drawn on a logarithmic axis and are omitted, so each curve starts at the first memory size where that benchmark evicts a page.}
+\label{fig:evict}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}
+\begin{axis}[report plot, xmode=log, ymode=log,
+  xlabel={Physical memory (frames, log scale)},
+  ylabel={Total cycles}]
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,8.040047e+12) (16,1.8283828e+12) (64,9.1626458e+11) (256,9.1569262e+10) (1024,1.9469262e+10) (4096,2.4892624e+09) (16384,2.4892624e+09) (524288,2.4892624e+09)};
+\addlegendentry{blender}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,3.5870788e+13) (16,8.0226689e+11) (64,3.5651581e+10) (256,3.1811581e+10) (1024,1.6451581e+10) (4096,2.591581e+09) (16384,2.591581e+09) (524288,2.591581e+09)};
+\addlegendentry{fotonik3d}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,1.7936106e+13) (16,4.9732666e+12) (64,7.9922309e+11) (256,9.7272753e+10) (1024,2.5127533e+09) (4096,2.5127533e+09) (16384,2.5127533e+09) (524288,2.5127533e+09)};
+\addlegendentry{gcc}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,1.5032427e+11) (16,1.36264e+11) (64,1.3222394e+11) (256,2.3213512e+09) (1024,2.3213512e+09) (4096,2.3213512e+09) (16384,2.3213512e+09) (524288,2.3213512e+09)};
+\addlegendentry{imagick}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,9.7023155e+12) (16,1.3658422e+11) (64,5.5382611e+10) (256,5.1542611e+10) (1024,3.6182611e+10) (4096,2.5826112e+09) (16384,2.5826112e+09) (524288,2.5826112e+09)};
+\addlegendentry{lbm}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,1.9981587e+13) (16,4.231812e+12) (64,1.7592625e+12) (256,8.0907522e+11) (1024,1.4815218e+10) (4096,2.5352179e+09) (16384,2.5352179e+09) (524288,2.5352179e+09)};
+\addlegendentry{mcf}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,2.2940745e+13) (16,7.3718336e+12) (64,2.2887919e+12) (256,4.0472888e+11) (1024,2.548879e+09) (4096,2.548879e+09) (16384,2.548879e+09) (524288,2.548879e+09)};
+\addlegendentry{perlbench}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,3.4357247e+12) (16,3.8440364e+11) (64,1.2745852e+11) (256,2.3575897e+09) (1024,2.3575897e+09) (4096,2.3575897e+09) (16384,2.3575897e+09) (524288,2.3575897e+09)};
+\addlegendentry{x264}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,1.1208491e+13) (16,5.0051639e+11) (64,3.3187304e+11) (256,2.9713278e+11) (1024,2.8141278e+11) (4096,2.1987278e+11) (16384,2.4127809e+09) (524288,2.4127809e+09)};
+\addlegendentry{xalancbmk}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,1.0061323e+13) (16,2.6008343e+12) (64,6.5985547e+11) (256,4.7823335e+11) (1024,2.9245335e+11) (4096,1.0481335e+11) (16384,2.393349e+09) (524288,2.393349e+09)};
+\addlegendentry{xz}
+\end{axis}
+\end{tikzpicture}
+\caption{Total cycles versus physical memory size (two-level table with TLB).}
+\label{fig:cycles}
+\end{figure}
+
+\paragraph{When replacement starts (A).} In all 160 runs, a benchmark has zero evictions exactly when the number of frames is at least the number of pages it touches (Table~\ref{tab:part1}). Once memory is smaller than that, the number of faults minus the number of evictions equals the number of frames, i.e.\ memory fills completely before the first eviction.
+
+\paragraph{Cycles (B).} Wherever any eviction happens, the disk cost dominates: it accounts for at least 82.9\% of the total cycles in every run with at least one eviction. As a result, total cycles rise by orders of magnitude as soon as memory drops below a benchmark's footprint (Figure~\ref{fig:cycles}).
+
+\paragraph{Page table type.} In every one of the 80 (benchmark, size) pairs, the single-level and two-level simulators have identical fault counts, eviction counts and TLB hit rates; only the cycle counts differ, by the extra walk access. Replacement is decided by the frame manager and does not depend on the page table.
+
+\section{Part V: Simulator Speed}
+
+Table~\ref{tab:part5} gives the wall-clock time of the complete simulator (two-level page table with TLB, as in Part III) for each benchmark. The time is measured with a monotonic clock around constructing the simulator, reading the trace and simulating every access; it includes reading the trace from disk and excludes printing. Each figure is from one run, so it is subject to run-to-run noise. The ten benchmarks together take 2.5\,s.
+
+\begin{table}[ht]
+\centering\small
+\caption{Simulator time per benchmark (two-level page table with TLB, \texttt{-O2}).}
+\label{tab:part5}
+\fit{
+\begin{tabular}{lrrr}
+\toprule
+Benchmark & Accesses (M) & Time (s) & M accesses/s \\
+\midrule
+blender & 12.37 & 0.211 & 58.6 \\
+fotonik3d & 12.89 & 0.180 & 71.6 \\
+gcc & 12.47 & 0.369 & 33.8 \\
+imagick & 11.55 & 0.127 & 90.9 \\
+lbm & 12.84 & 0.167 & 76.9 \\
+mcf & 12.47 & 0.329 & 37.9 \\
+perlbench & 12.57 & 0.370 & 34.0 \\
+x264 & 11.72 & 0.348 & 33.7 \\
+xalancbmk & 11.97 & 0.175 & 68.4 \\
+xz & 11.85 & 0.261 & 45.4 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\section{Notes and Limitations}
+\begin{itemize}
+\item Page table utilization for the two-level table excludes the fixed 1024-entry directory. It is only reported for Parts I--III; in Part IV second-level tables can be freed by evictions, so the value at the end of a run is not comparable.
+\item ``Page fault rate'' in Part IV is faults per access including compulsory first-touch faults. The eviction rate (replacements per access) is also in \texttt{results/part\_iv.csv}.
+\item Page-table storage is not modelled as using physical frames, so it does not compete with the benchmark's pages for memory in Part IV.
+\item Timing figures come from a single run on one machine.
+\end{itemize}
+
+\end{document}
