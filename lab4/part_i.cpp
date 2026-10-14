@@ -1,6 +1,7 @@
 // Part I: single-level page table, no TLB, enough frames that nothing is evicted.
-// Prints one CSV row per benchmark. Usage: part_i [trace_dir] [max_accesses]
+// Usage: part_i [trace_dir] [max_accesses]
 #include "benchmark.hpp"
+#include "report_table.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -21,6 +22,7 @@ static double write_hot_pages(const std::string& name, const std::vector<uint32_
     for(uint32_t c : counts) total += c;
 
     std::string file = "results/hot_pages_" + name + ".csv";
+    std::filesystem::create_directories("results");
     FILE* out = fopen(file.c_str(), "w");
     if(!out){
         fprintf(stderr, "Could not write %s\n", file.c_str());
@@ -45,18 +47,22 @@ static double write_hot_pages(const std::string& name, const std::vector<uint32_
 int main(int argc, char** argv){
     std::string trace_dir = argc > 1 ? argv[1] : "traces";
     uint64_t max_accesses = argc > 2 ? strtoull(argv[2], nullptr, 10) : 0;
-    std::filesystem::create_directories("results");
 
     MemoryConfig config;
     config.page_table = PageTableVariant::SINGLE;
 
-    printf("benchmark,accesses,frames_used,pt_utilization,top10pct_pages_access_share,cycles,hash,seconds\n");
+    ReportTable table("Part I: single-level page table, no TLB",
+        {{"benchmark", 12}, {"accesses", 10}, {"frames_used", 11}, {"pt_util_%", 10},
+         {"top10%_share_%", 14}, {"cycles", 16}, {"hash", 16}, {"seconds", 8}});
     for(const std::string& trace : list_traces(trace_dir)){
         std::vector<uint32_t> page_counts;
         BenchmarkResult r = run_benchmark(trace, config, max_accesses, &page_counts);
         double top10 = write_hot_pages(r.name, page_counts);
-        printf("%s,%llu,%d,%.8f,%.6f,%llu,%llx,%.3f\n", r.name.c_str(),
-               (unsigned long long)r.stats.accesses, r.frames_used, r.utilization, top10,
-               (unsigned long long)r.stats.cycles, (unsigned long long)r.stats.hash, r.seconds);
+        table.add_row({r.name, format("%llu", (unsigned long long)r.stats.accesses), format("%d", r.frames_used),
+                       format("%.4f", r.utilization * 100), format("%.2f", top10 * 100),
+                       format("%llu", (unsigned long long)r.stats.cycles),
+                       format("%016llx", (unsigned long long)r.stats.hash), format("%.3f", r.seconds)});
     }
+    printf("\ntop10%%_share_%% = share of all accesses that go to the hottest 10%% of the touched pages\n");
+    table.write_csv("results/part_i.csv");
 }

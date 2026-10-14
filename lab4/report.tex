@@ -56,6 +56,12 @@ The final 200 cycles is the access to the data itself. A page fault into a free 
 \item \textbf{Part IV} (limited frames): frames are initially handed out the same way. Once all frames are in use, a page fault evicts the least recently used page. Recency is kept in a doubly linked list over the frames; every access (TLB hit or not) moves the accessed page's frame to the most-recently-used end, and the victim is the frame at the least-recently-used end. On eviction the simulator removes the victim from the page table, invalidates its TLB entry (so the TLB can never return a translation to a frame that has been reused), charges the disk cost, and gives the freed frame to the faulting page.
 \end{itemize}
 
+\subsection{TLB and LRU implementation}
+\begin{itemize}
+\item \textbf{TLB.} A flat array of 128 entries, each holding a VPN, a frame number, a valid bit and the value of a global access counter at its last use. A lookup scans the array linearly and, on a hit, refreshes the entry's counter. An insertion uses the first invalid entry if there is one and otherwise replaces the entry with the smallest counter (the least recently used). Invalidation marks the matching entry invalid.
+\item \textbf{Frame LRU list.} The doubly linked list is stored in arrays indexed by frame number (with a head and a tail sentinel), so the list node of a frame is found directly. Moving a frame to the most-recently-used end and evicting the least-recently-used frame are both constant-time operations; a frame that is already the most recently used is left in place.
+\end{itemize}
+
 \subsection{Page tables}
 The \emph{single-level} table is an array of $2^{20}$ entries indexed by the VPN. The \emph{two-level} table splits the VPN into a 10-bit directory index and a 10-bit second-level index. Second-level tables (1024 entries each) are allocated only when the first page they cover is mapped, and are freed when their last valid entry is removed. Each second-level table therefore covers 1024 pages (a 4\,MB region of the address space).
 
@@ -137,7 +143,33 @@ xz & 11.85 & 8037 & 0.7665 & 99.5 & 4.741 \\
 
 \paragraph{Page table utilization (D).} Only 0.009\%--1.37\% of the entries of the single-level table are ever accessed. The table always has $2^{20}$ entries allocated, whatever the benchmark touches.
 
-\paragraph{Cycles (C) and hash (E).} With no TLB, every access costs 400 cycles (one table access plus the data access), so total cycles are exactly $400 \times$ accesses (4.620--5.156 billion cycles). The hashes are listed in \texttt{results/part\_i.csv}.
+\paragraph{Cycles (C).} With no TLB, every access costs 400 cycles (one table access plus the data access), so total cycles are exactly $400 \times$ accesses (4.620--5.156 billion cycles).
+
+\paragraph{Hash (E).} Table~\ref{tab:hash} lists the final hash of each benchmark. These are the values produced with the single-level table; Part II shows that the two-level table produces the same ones.
+
+\begin{table}[ht]
+\centering\small
+\caption{Final hash $H$ of each benchmark (64-bit, hexadecimal), identical for the single-level and two-level simulators.}
+\label{tab:hash}
+\fit{
+\begin{tabular}{ll}
+\toprule
+Benchmark & Hash \\
+\midrule
+blender & \texttt{e63e5f066c37e99e} \\
+fotonik3d & \texttt{c62619cfcf931b0c} \\
+gcc & \texttt{4189fb695f6069f7} \\
+imagick & \texttt{7fa618e7ef7712eb} \\
+lbm & \texttt{6e17e34e57b8975d} \\
+mcf & \texttt{9e61e23f117ee4a4} \\
+perlbench & \texttt{72095b979695151d} \\
+x264 & \texttt{9da6f2e91ac155a1} \\
+xalancbmk & \texttt{e43e4394367b9c0c} \\
+xz & \texttt{49965a8c8a4160b2} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
 
 \section{Part II: Two-Level Page Table}
 
@@ -165,7 +197,9 @@ xz & 43 & 44\,032 & 18.25 & 0.7665 & 7.111 & 4.741 \\
 }
 \end{table}
 
-\paragraph{Hash.} The hash computed with the two-level table is identical to the one from Part I for all ten benchmarks. This is expected: the hash depends only on the sequence of frame numbers, the frame allocator is the same in both simulators, and the page table type does not affect which frame a page gets.
+\paragraph{Hot pages (B).} The per-page access counts depend only on the sequence of virtual pages in the trace, not on the page table type, so Figure~\ref{fig:hot} and the top-10\% shares in Table~\ref{tab:part1} apply unchanged to the two-level simulator.
+
+\paragraph{Hash.} The hash computed with the two-level table is identical to the one from Part I (Table~\ref{tab:hash}) for all ten benchmarks. This is expected: the hash depends only on the sequence of frame numbers, the frame allocator is the same in both simulators, and the page table type does not affect which frame a page gets.
 
 \paragraph{Space.} The number of pages touched is the same for both table types, so the difference in utilization (Table~\ref{tab:part2}) comes entirely from the denominator. The two-level table allocates only the second-level tables that cover touched pages, namely 5 to 70 tables per benchmark (one per distinct 4\,MB region touched, since nothing is evicted), against the fixed $2^{20}$ entries of the single-level table. Its utilization is 1.28\%--34.7\%, compared with 0.009\%--1.37\% for the single-level table. The top-level directory (1024 entries) is a fixed cost that is not included in these figures.
 
@@ -201,18 +235,52 @@ xz & 99.7669 & 2.388 & 2.393 & 1.99 & 2.97 \\
 
 \paragraph{Cycles (B).} With the TLB, total cycles drop to 2.321--2.591 billion. This is a speedup of 1.98--1.99 times for the single-level table and 2.95--2.99 times for the two-level table over the no-TLB runs. The two-level table benefits more because a TLB hit skips the entire page-table walk, and the walk is more expensive for the two-level table. With the TLB, the difference between the two table types shrinks to 200 cycles per TLB miss (one extra memory access per walk), which is a small fraction of the total.
 
+\section{Temporal and Spatial Locality}
+
+The earlier results say something about how the benchmarks use their pages. This section collects that evidence; it is limited to what the measurements above can show, and we did not run any additional locality experiments (for example, we did not measure the distance between consecutive accesses).
+
+\begin{table}[ht]
+\centering\small
+\caption{Page-level footprint of each benchmark. ``Accesses per page'' is total accesses divided by distinct pages touched. ``Regions'' is the number of second-level tables allocated in Part II, i.e.\ the number of distinct 4\,MB-aligned regions of the address space that contain at least one touched page (out of 1024 possible). ``Pages per region'' is pages touched divided by regions. The TLB hit rate is from Part III.}
+\label{tab:locality}
+\fit{
+\begin{tabular}{lrrrrr}
+\toprule
+Benchmark & Pages touched & Accesses per page & Regions & Pages per region & TLB hit rate (\%) \\
+\midrule
+blender & 1\,551 & 7\,975 & 47 & 33 & 99.9398 \\
+fotonik3d & 1\,602 & 8\,046 & 14 & 114 & 99.9867 \\
+gcc & 990 & 12\,599 & 70 & 14 & 99.8874 \\
+imagick & 96 & 120\,300 & 5 & 19 & 99.9992 \\
+lbm & 2\,131 & 6\,027 & 6 & 355 & 99.9789 \\
+mcf & 1\,597 & 7\,811 & 13 & 123 & 99.4421 \\
+perlbench & 630 & 19\,949 & 48 & 13 & 99.5484 \\
+x264 & 234 & 50\,091 & 11 & 21 & 99.9659 \\
+xalancbmk & 14\,325 & 836 & 54 & 265 & 99.8673 \\
+xz & 8\,037 & 1\,475 & 43 & 187 & 99.7669 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Temporal locality.} Each benchmark makes between 11.5 and 12.9 million accesses to at most 14\,325 distinct pages, so every page is accessed hundreds to over a hundred thousand times on average (Table~\ref{tab:locality}), and the access counts are heavily skewed towards a few pages (Table~\ref{tab:part1}). More directly, in Part III no page is ever evicted, so the TLB is a pure 128-entry LRU cache of translations. An access therefore hits in the TLB exactly when its page is among the 128 most recently used distinct pages. A hit rate of 99.44\%--99.9992\% thus means that, for nearly every access, the same page was already used within the last 128 distinct pages. We read this as strong temporal locality at page granularity. The benchmarks differ (mcf and perlbench have the lowest hit rates, about 99.4\% and 99.5\%), but we did not investigate why.
+
+\paragraph{Spatial locality.} The touched pages are concentrated in a small part of the address space: the benchmarks use only 5 to 70 of the 1024 possible 4\,MB regions, i.e.\ between 0.5\% and 6.8\%. This clustering is what lets the two-level page table allocate so few second-level tables (Part II). Within the regions that are used, the touched pages do not fill the region densely: the average is between 13 and 355 touched pages per region, out of 1024 (1.3\%--34.7\%, the two-level utilization of Table~\ref{tab:part2}). So the footprint is clustered at the scale of megabytes, but sparse within the clusters. The page-level view cannot tell us whether consecutive accesses are close to each other in address.
+
+\paragraph{Implication.} A small footprint with strong page reuse is consistent with the other results: a 128-entry TLB covers most accesses, and Part IV starts replacing pages only when physical memory is smaller than the benchmark's footprint.
+
 \section{Part IV: Limited Physical Memory}
 
 The traces touch at most 14\,325 pages, which is less than $2^{14}=16384$ frames, i.e.\ less than $1/64$ of the virtual address space. Physical memory sizes of $1/2$, $1/4$, $1/8$, $1/16$ and $1/32$ of the virtual address space therefore give exactly the same result as $1/2$: nothing is ever evicted. We ran physical memory sizes of $1/262144$, $1/65536$, $1/16384$, $1/4096$, $1/1024$, $1/256$, $1/64$ and $1/2$ of the virtual address space ($2^{2}$, $2^{4}$, $2^{6}$, $2^{8}$, $2^{10}$, $2^{12}$, $2^{14}$ and $2^{19}$ frames). All runs use the TLB. A page fault is any first load of a page into memory, including loads into a free frame; an eviction is a fault that has to replace a resident page, and only evictions are charged the 20 million cycle disk cost.
 
 \begin{table}[ht]
 \centering\small
-\caption{Part IV: page faults per million accesses for each physical memory size (columns are numbers of frames). The fault counts are identical for the single-level and two-level tables. The 16384-frame column equals the compulsory (first-touch) faults.}
+\caption{Part IV: page faults per million accesses for each physical memory size (columns are numbers of frames; the smaller number below each is that many frames as a fraction of the $2^{20}$ virtual pages). The fault counts are identical for the single-level and two-level tables. The 16384-frame column equals the compulsory (first-touch) faults.}
 \label{tab:part4}
 \fit{
 \begin{tabular}{lrrrrrr}
 \toprule
-Benchmark & 4 & 16 & 64 & 256 & 1024 & 16384 \\
+Benchmark & \shortstack[r]{4\\ \scriptsize $2^{-18}$} & \shortstack[r]{16\\ \scriptsize $2^{-16}$} & \shortstack[r]{64\\ \scriptsize $2^{-14}$} & \shortstack[r]{256\\ \scriptsize $2^{-12}$} & \shortstack[r]{1024\\ \scriptsize $2^{-10}$} & \shortstack[r]{16384\\ \scriptsize $2^{-6}$} \\
 \midrule
 blender & 32\,489 & 7\,382 & 3\,699 & 381 & 151 & 125 \\
 fotonik3d & 139\,129 & 3\,103 & 133 & 133 & 133 & 124 \\
@@ -224,6 +292,30 @@ perlbench & 91\,255 & 29\,318 & 9\,100 & 1\,620 & 50 & 50 \\
 x264 & 14\,646 & 1\,631 & 539 & 20 & 20 & 20 \\
 xalancbmk & 46\,800 & 2\,082 & 1\,381 & 1\,252 & 1\,251 & 1\,197 \\
 xz & 42\,434 & 10\,963 & 2\,779 & 2\,029 & 1\,310 & 678 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\begin{table}[ht]
+\centering\small
+\caption{Part IV: total cycles ($10^9$) for each physical memory size (columns are numbers of frames; the smaller number below each is that many frames as a fraction of the $2^{20}$ virtual pages), two-level table with TLB. The single-level table gives the same fault and eviction counts and differs only by one extra memory access per TLB miss. The 524288-frame column is $1/2$ of the virtual address space.}
+\label{tab:part4cycles}
+\fit{
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Benchmark & \shortstack[r]{4\\ \scriptsize $2^{-18}$} & \shortstack[r]{16\\ \scriptsize $2^{-16}$} & \shortstack[r]{64\\ \scriptsize $2^{-14}$} & \shortstack[r]{256\\ \scriptsize $2^{-12}$} & \shortstack[r]{1024\\ \scriptsize $2^{-10}$} & \shortstack[r]{4096\\ \scriptsize $2^{-8}$} & \shortstack[r]{16384\\ \scriptsize $2^{-6}$} & \shortstack[r]{524288\\ \scriptsize $2^{-1}$} \\
+\midrule
+blender & 8\,040.0 & 1\,828.4 & 916.3 & 91.6 & 19.5 & 2.5 & 2.5 & 2.5 \\
+fotonik3d & 35\,870.8 & 802.3 & 35.7 & 31.8 & 16.5 & 2.6 & 2.6 & 2.6 \\
+gcc & 17\,936.1 & 4\,973.3 & 799.2 & 97.3 & 2.5 & 2.5 & 2.5 & 2.5 \\
+imagick & 150.3 & 136.3 & 132.2 & 2.3 & 2.3 & 2.3 & 2.3 & 2.3 \\
+lbm & 9\,702.3 & 136.6 & 55.4 & 51.5 & 36.2 & 2.6 & 2.6 & 2.6 \\
+mcf & 19\,981.6 & 4\,231.8 & 1\,759.3 & 809.1 & 14.8 & 2.5 & 2.5 & 2.5 \\
+perlbench & 22\,940.7 & 7\,371.8 & 2\,288.8 & 404.7 & 2.5 & 2.5 & 2.5 & 2.5 \\
+x264 & 3\,435.7 & 384.4 & 127.5 & 2.4 & 2.4 & 2.4 & 2.4 & 2.4 \\
+xalancbmk & 11\,208.5 & 500.5 & 331.9 & 297.1 & 281.4 & 219.9 & 2.4 & 2.4 \\
+xz & 10\,061.3 & 2\,600.8 & 659.9 & 478.2 & 292.5 & 104.8 & 2.4 & 2.4 \\
 \bottomrule
 \end{tabular}
 }
@@ -295,13 +387,17 @@ xz & 42\,434 & 10\,963 & 2\,779 & 2\,029 & 1\,310 & 678 \\
 
 \paragraph{When replacement starts (A).} In all 160 runs, a benchmark has zero evictions exactly when the number of frames is at least the number of pages it touches (Table~\ref{tab:part1}). Once memory is smaller than that, the number of faults minus the number of evictions equals the number of frames, i.e.\ memory fills completely before the first eviction.
 
-\paragraph{Cycles (B).} Wherever any eviction happens, the disk cost dominates: it accounts for at least 82.9\% of the total cycles in every run with at least one eviction. As a result, total cycles rise by orders of magnitude as soon as memory drops below a benchmark's footprint (Figure~\ref{fig:cycles}).
+\paragraph{Cycles (B).} Wherever any eviction happens, the disk cost dominates: it accounts for at least 82.9\% of the total cycles in every run with at least one eviction. As a result, total cycles rise by orders of magnitude as soon as memory drops below a benchmark's footprint (Table~\ref{tab:part4cycles}, Figure~\ref{fig:cycles}).
 
 \paragraph{Page table type.} In every one of the 80 (benchmark, size) pairs, the single-level and two-level simulators have identical fault counts, eviction counts and TLB hit rates; only the cycle counts differ, by the extra walk access. Replacement is decided by the frame manager and does not depend on the page table.
 
+\paragraph{Clean and dirty pages.} Every eviction costs the full 20 million cycles. The trace's read/write flags are ignored, so the simulator does not distinguish clean pages from dirty ones and does not model write-back: evicting a page that was only read costs the same as evicting one that was written. Under a model where clean pages can be dropped without a disk write, the cycle counts in Part IV would be lower, so they are an upper-end estimate under that alternative; we have not measured how much lower.
+
 \section{Part V: Simulator Speed}
 
-Table~\ref{tab:part5} gives the wall-clock time of the complete simulator (two-level page table with TLB, as in Part III) for each benchmark. The time is measured with a monotonic clock around constructing the simulator, reading the trace and simulating every access; it includes reading the trace from disk and excludes printing. Each figure is from one run, so it is subject to run-to-run noise. The ten benchmarks together take 2.5\,s.
+Table~\ref{tab:part5} gives the wall-clock time of the complete simulator (two-level page table with TLB, as in Part III) for each benchmark. The time is measured with a monotonic clock around constructing the simulator, reading the trace and simulating every access; it includes reading the trace from disk and excludes printing. Each figure is from one run, so it is subject to run-to-run noise. The ten benchmarks together take 4.0\,s.
+
+Design choices that affect speed: the page tables, the frame list, the per-page access counters and the TLB are all flat arrays (no hash maps or node-based containers); the LRU list and its updates are constant time; the TLB is a linear scan over only 128 entries; and the trace is read in 1\,MB chunks and parsed by hand, with no per-line string handling. The programs are built with \texttt{-O2}.
 
 \begin{table}[ht]
 \centering\small
@@ -312,16 +408,16 @@ Table~\ref{tab:part5} gives the wall-clock time of the complete simulator (two-l
 \toprule
 Benchmark & Accesses (M) & Time (s) & M accesses/s \\
 \midrule
-blender & 12.37 & 0.211 & 58.6 \\
-fotonik3d & 12.89 & 0.180 & 71.6 \\
-gcc & 12.47 & 0.369 & 33.8 \\
-imagick & 11.55 & 0.127 & 90.9 \\
-lbm & 12.84 & 0.167 & 76.9 \\
-mcf & 12.47 & 0.329 & 37.9 \\
-perlbench & 12.57 & 0.370 & 34.0 \\
-x264 & 11.72 & 0.348 & 33.7 \\
-xalancbmk & 11.97 & 0.175 & 68.4 \\
-xz & 11.85 & 0.261 & 45.4 \\
+blender & 12.37 & 0.326 & 37.9 \\
+fotonik3d & 12.89 & 0.285 & 45.2 \\
+gcc & 12.47 & 0.572 & 21.8 \\
+imagick & 11.55 & 0.213 & 54.2 \\
+lbm & 12.84 & 0.266 & 48.3 \\
+mcf & 12.47 & 0.506 & 24.7 \\
+perlbench & 12.57 & 0.583 & 21.6 \\
+x264 & 11.72 & 0.553 & 21.2 \\
+xalancbmk & 11.97 & 0.277 & 43.2 \\
+xz & 11.85 & 0.405 & 29.3 \\
 \bottomrule
 \end{tabular}
 }
@@ -331,6 +427,7 @@ xz & 11.85 & 0.261 & 45.4 \\
 \begin{itemize}
 \item Page table utilization for the two-level table excludes the fixed 1024-entry directory. It is only reported for Parts I--III; in Part IV second-level tables can be freed by evictions, so the value at the end of a run is not comparable.
 \item ``Page fault rate'' in Part IV is faults per access including compulsory first-touch faults. The eviction rate (replacements per access) is also in \texttt{results/part\_iv.csv}.
+\item Every eviction is charged the full 20 million cycles. The read/write flags of the trace are ignored, so there is no distinction between clean and dirty pages and no write-back modelling.
 \item Page-table storage is not modelled as using physical frames, so it does not compete with the benchmark's pages for memory in Part IV.
 \item Timing figures come from a single run on one machine.
 \end{itemize}
