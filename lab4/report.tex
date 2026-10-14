@@ -74,8 +74,23 @@ The \emph{single-level} table is an array of $2^{20}$ entries indexed by the VPN
 \item[E. Hash] $H \leftarrow (H \oplus \mathit{frame}) \times 1099511628211 \pmod{2^{64}}$, applied once per access with $H=0$ initially.
 \end{description}
 
+\subsection{Hash function}
+The hash of a benchmark is a single 64-bit value computed over the whole run. It starts at $H=0$, and every access to memory (a TLB hit, a page-table hit or a page fault alike) updates it with the frame number $f$ that the access used:
+\[
+H \leftarrow (H \oplus f) \times 1099511628211 \pmod{2^{64}}.
+\]
+The constant is the 64-bit FNV prime; the update is a variation on the FNV-1a hash, which XORs in one byte at a time, whereas here a whole frame number is XORed in. The properties we rely on are the following.
+\begin{itemize}
+\item \textbf{Deterministic.} $H$ depends only on the sequence of frame numbers, so two runs that use the same frame for every access, in the same order, end with the same value. This is why the single-level and two-level simulators must agree (Part II): the frame allocator hands out frames in first-touch order and does not depend on the page table.
+\item \textbf{Order-sensitive.} The update is not commutative: applying frames $f_1$ then $f_2$ gives $((f_1 p) \oplus f_2)\,p$, whereas $f_2$ then $f_1$ gives $((f_2 p) \oplus f_1)\,p$, which are different in general. The hash therefore reflects the order in which frames are used, not just which frames are used.
+\item \textbf{No information lost at each step.} The multiplier is odd, so multiplication modulo $2^{64}$ is a bijection, and so is XOR with a fixed $f$. For a given frame number, two different values of $H$ can never become equal after one update.
+\end{itemize}
+The hash is a checksum, not a proof. If two runs end with different values, their frame sequences certainly differ, because the computation is deterministic. If they end with the same value, the sequences are very likely but not provably identical, since a 64-bit value cannot distinguish every pair of sequences; we do not quantify that probability.
+
+\paragraph{How the values are reported.} For each benchmark we report the final value of $H$ after the last access of the trace, as an unsigned 64-bit integer written as 16 hexadecimal digits. The single-level value is in the last column of Table~\ref{tab:part1} (Part I) and the two-level value in the last column of Table~\ref{tab:part2} (Part II), so the two can be compared row by row. The programs also compare the two values themselves: Part II compares the two-level run with a single-level run of the same trace, and Part III compares the single-level and two-level runs with the TLB; both print ``yes'' or ``NO'' in a \texttt{hash\_match} column. The hash is not reported for Part IV, where replacement changes which frames pages use.
+
 \subsection{Environment}
-All numbers come from one run of each program on an Intel Core Ultra 7 258V (8 logical CPUs, 30\,GB RAM), compiled with g++ 13.3.0 using \texttt{-std=c++17 -O2}. The ten benchmark traces contain between 11.5 and 12.9 million accesses each. Traces are streamed from disk in 1\,MB chunks and parsed by hand.
+The programs are compiled with g++ 13.3.0 using \texttt{-std=c++17 -O2}. The ten benchmark traces contain between 11.5 and 12.9 million accesses each. Traces are streamed from disk in 1\,MB chunks and parsed by hand.
 
 \section{Part I: Single-Level Page Table}
 
@@ -83,23 +98,23 @@ Table~\ref{tab:part1} shows the results with a single-level table, no TLB, and e
 
 \begin{table}[ht]
 \centering\small
-\caption{Part I results (single-level page table, no TLB). ``Top-10\% share'' is the fraction of all accesses that go to the most-accessed 10\% of the pages the benchmark touches.}
+\caption{Part I results (single-level page table, no TLB). ``Top-10\% share'' is the fraction of all accesses that go to the most-accessed 10\% of the pages the benchmark touches. ``Hash'' is the final value of $H$ (64-bit, hexadecimal).}
 \label{tab:part1}
 \fit{
-\begin{tabular}{lrrrrr}
+\begin{tabular}{lrrrrrl}
 \toprule
-Benchmark & Accesses (M) & Frames used & PT util.\ (\%) & Top-10\% share (\%) & Cycles ($10^9$) \\
+Benchmark & Accesses (M) & Frames used & PT util.\ (\%) & Top-10\% share (\%) & Cycles ($10^9$) & Hash \\
 \midrule
-blender & 12.37 & 1551 & 0.1479 & 99.2 & 4.948 \\
-fotonik3d & 12.89 & 1602 & 0.1528 & 91.3 & 5.156 \\
-gcc & 12.47 & 990 & 0.0944 & 82.5 & 4.989 \\
-imagick & 11.55 & 96 & 0.0092 & 89.1 & 4.620 \\
-lbm & 12.84 & 2131 & 0.2032 & 94.1 & 5.137 \\
-mcf & 12.47 & 1597 & 0.1523 & 97.9 & 4.990 \\
-perlbench & 12.57 & 630 & 0.0601 & 89.3 & 5.027 \\
-x264 & 11.72 & 234 & 0.0223 & 90.0 & 4.689 \\
-xalancbmk & 11.97 & 14325 & 1.3661 & 95.2 & 4.789 \\
-xz & 11.85 & 8037 & 0.7665 & 99.5 & 4.741 \\
+blender & 12.37 & 1551 & 0.1479 & 99.2 & 4.948 & \texttt{e63e5f066c37e99e} \\
+fotonik3d & 12.89 & 1602 & 0.1528 & 91.3 & 5.156 & \texttt{c62619cfcf931b0c} \\
+gcc & 12.47 & 990 & 0.0944 & 82.5 & 4.989 & \texttt{4189fb695f6069f7} \\
+imagick & 11.55 & 96 & 0.0092 & 89.1 & 4.620 & \texttt{7fa618e7ef7712eb} \\
+lbm & 12.84 & 2131 & 0.2032 & 94.1 & 5.137 & \texttt{6e17e34e57b8975d} \\
+mcf & 12.47 & 1597 & 0.1523 & 97.9 & 4.990 & \texttt{9e61e23f117ee4a4} \\
+perlbench & 12.57 & 630 & 0.0601 & 89.3 & 5.027 & \texttt{72095b979695151d} \\
+x264 & 11.72 & 234 & 0.0223 & 90.0 & 4.689 & \texttt{9da6f2e91ac155a1} \\
+xalancbmk & 11.97 & 14325 & 1.3661 & 95.2 & 4.789 & \texttt{e43e4394367b9c0c} \\
+xz & 11.85 & 8037 & 0.7665 & 99.5 & 4.741 & \texttt{49965a8c8a4160b2} \\
 \bottomrule
 \end{tabular}
 }
@@ -145,53 +160,29 @@ xz & 11.85 & 8037 & 0.7665 & 99.5 & 4.741 \\
 
 \paragraph{Cycles (C).} With no TLB, every access costs 400 cycles (one table access plus the data access), so total cycles are exactly $400 \times$ accesses (4.620--5.156 billion cycles).
 
-\paragraph{Hash (E).} Table~\ref{tab:hash} lists the final hash of each benchmark. These are the values produced with the single-level table; Part II shows that the two-level table produces the same ones.
-
-\begin{table}[ht]
-\centering\small
-\caption{Final hash $H$ of each benchmark (64-bit, hexadecimal), identical for the single-level and two-level simulators.}
-\label{tab:hash}
-\fit{
-\begin{tabular}{ll}
-\toprule
-Benchmark & Hash \\
-\midrule
-blender & \texttt{e63e5f066c37e99e} \\
-fotonik3d & \texttt{c62619cfcf931b0c} \\
-gcc & \texttt{4189fb695f6069f7} \\
-imagick & \texttt{7fa618e7ef7712eb} \\
-lbm & \texttt{6e17e34e57b8975d} \\
-mcf & \texttt{9e61e23f117ee4a4} \\
-perlbench & \texttt{72095b979695151d} \\
-x264 & \texttt{9da6f2e91ac155a1} \\
-xalancbmk & \texttt{e43e4394367b9c0c} \\
-xz & \texttt{49965a8c8a4160b2} \\
-\bottomrule
-\end{tabular}
-}
-\end{table}
+\paragraph{Hash (E).} The last column of Table~\ref{tab:part1} lists the final hash of each benchmark with the single-level table. Table~\ref{tab:part2} in Part II lists the hashes produced with the two-level table, so the two can be compared row by row.
 
 \section{Part II: Two-Level Page Table}
 
 \begin{table}[ht]
 \centering\small
-\caption{Part II results (two-level page table, no TLB), with the single-level numbers for comparison. ``L2 tables'' is the number of second-level tables allocated. The frames used and hashes are identical to Part I.}
+\caption{Part II results (two-level page table, no TLB), with the single-level numbers for comparison. ``L2 tables'' is the number of second-level tables allocated. The frames used are identical to Part I, and the hash column (two-level table) can be compared directly with the last column of Table~\ref{tab:part1} (single-level table).}
 \label{tab:part2}
 \fit{
-\begin{tabular}{lrrrrrr}
+\begin{tabular}{lrrrrrrl}
 \toprule
-Benchmark & L2 tables & Entries alloc.\ (2L) & Util.\ 2L (\%) & Util.\ 1L (\%) & Cycles 2L ($10^9$) & Cycles 1L ($10^9$) \\
+Benchmark & L2 tables & Entries alloc.\ (2L) & Util.\ 2L (\%) & Util.\ 1L (\%) & Cycles 2L ($10^9$) & Cycles 1L ($10^9$) & Hash (2L) \\
 \midrule
-blender & 47 & 48\,128 & 3.22 & 0.1479 & 7.422 & 4.948 \\
-fotonik3d & 14 & 14\,336 & 11.17 & 0.1528 & 7.734 & 5.156 \\
-gcc & 70 & 71\,680 & 1.38 & 0.0944 & 7.484 & 4.989 \\
-imagick & 5 & 5\,120 & 1.88 & 0.0092 & 6.929 & 4.620 \\
-lbm & 6 & 6\,144 & 34.68 & 0.2032 & 7.706 & 5.137 \\
-mcf & 13 & 13\,312 & 12.00 & 0.1523 & 7.485 & 4.990 \\
-perlbench & 48 & 49\,152 & 1.28 & 0.0601 & 7.541 & 5.027 \\
-x264 & 11 & 11\,264 & 2.08 & 0.0223 & 7.033 & 4.689 \\
-xalancbmk & 54 & 55\,296 & 25.91 & 1.3661 & 7.183 & 4.789 \\
-xz & 43 & 44\,032 & 18.25 & 0.7665 & 7.111 & 4.741 \\
+blender & 47 & 48\,128 & 3.22 & 0.1479 & 7.422 & 4.948 & \texttt{e63e5f066c37e99e} \\
+fotonik3d & 14 & 14\,336 & 11.17 & 0.1528 & 7.734 & 5.156 & \texttt{c62619cfcf931b0c} \\
+gcc & 70 & 71\,680 & 1.38 & 0.0944 & 7.484 & 4.989 & \texttt{4189fb695f6069f7} \\
+imagick & 5 & 5\,120 & 1.88 & 0.0092 & 6.929 & 4.620 & \texttt{7fa618e7ef7712eb} \\
+lbm & 6 & 6\,144 & 34.68 & 0.2032 & 7.706 & 5.137 & \texttt{6e17e34e57b8975d} \\
+mcf & 13 & 13\,312 & 12.00 & 0.1523 & 7.485 & 4.990 & \texttt{9e61e23f117ee4a4} \\
+perlbench & 48 & 49\,152 & 1.28 & 0.0601 & 7.541 & 5.027 & \texttt{72095b979695151d} \\
+x264 & 11 & 11\,264 & 2.08 & 0.0223 & 7.033 & 4.689 & \texttt{9da6f2e91ac155a1} \\
+xalancbmk & 54 & 55\,296 & 25.91 & 1.3661 & 7.183 & 4.789 & \texttt{e43e4394367b9c0c} \\
+xz & 43 & 44\,032 & 18.25 & 0.7665 & 7.111 & 4.741 & \texttt{49965a8c8a4160b2} \\
 \bottomrule
 \end{tabular}
 }
@@ -199,7 +190,7 @@ xz & 43 & 44\,032 & 18.25 & 0.7665 & 7.111 & 4.741 \\
 
 \paragraph{Hot pages (B).} The per-page access counts depend only on the sequence of virtual pages in the trace, not on the page table type, so Figure~\ref{fig:hot} and the top-10\% shares in Table~\ref{tab:part1} apply unchanged to the two-level simulator.
 
-\paragraph{Hash.} The hash computed with the two-level table is identical to the one from Part I (Table~\ref{tab:hash}) for all ten benchmarks. This is expected: the hash depends only on the sequence of frame numbers, the frame allocator is the same in both simulators, and the page table type does not affect which frame a page gets.
+\paragraph{Hash.} The hash computed with the two-level table is identical to the one from Part I (last column of Table~\ref{tab:part1} against the last column of Table~\ref{tab:part2}) for all ten benchmarks. This is expected: the hash depends only on the sequence of frame numbers, the frame allocator is the same in both simulators, and the page table type does not affect which frame a page gets.
 
 \paragraph{Space.} The number of pages touched is the same for both table types, so the difference in utilization (Table~\ref{tab:part2}) comes entirely from the denominator. The two-level table allocates only the second-level tables that cover touched pages, namely 5 to 70 tables per benchmark (one per distinct 4\,MB region touched, since nothing is evicted), against the fixed $2^{20}$ entries of the single-level table. Its utilization is 1.28\%--34.7\%, compared with 0.009\%--1.37\% for the single-level table. The top-level directory (1024 entries) is a fixed cost that is not included in these figures.
 
@@ -326,6 +317,38 @@ xz & 10\,061.3 & 2\,600.8 & 659.9 & 478.2 & 292.5 & 104.8 & 2.4 & 2.4 \\
 \begin{tikzpicture}
 \begin{axis}[report plot, xmode=log, ymode=log,
   xlabel={Physical memory (frames, log scale)},
+  ylabel={Page fault rate (\% of accesses, log scale)}]
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,3.2489) (16,0.7382) (64,0.3699) (256,0.0381) (1024,0.0151) (4096,0.0125) (16384,0.0125) (524288,0.0125)};
+\addlegendentry{blender}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,13.9129) (16,0.3103) (64,0.0133) (256,0.0133) (1024,0.0133) (4096,0.0124) (16384,0.0124) (524288,0.0124)};
+\addlegendentry{fotonik3d}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,7.1887) (16,1.9926) (64,0.3199) (256,0.0400) (1024,0.0079) (4096,0.0079) (16384,0.0079) (524288,0.0079)};
+\addlegendentry{gcc}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.0641) (16,0.0581) (64,0.0568) (256,0.0008) (1024,0.0008) (4096,0.0008) (16384,0.0008) (524288,0.0008)};
+\addlegendentry{imagick}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,3.7761) (16,0.0523) (64,0.0211) (256,0.0211) (1024,0.0211) (4096,0.0166) (16384,0.0166) (524288,0.0166)};
+\addlegendentry{lbm}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,8.0078) (16,1.6953) (64,0.7046) (256,0.3253) (1024,0.0131) (4096,0.0128) (16384,0.0128) (524288,0.0128)};
+\addlegendentry{mcf}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,9.1255) (16,2.9318) (64,0.9100) (256,0.1620) (1024,0.0050) (4096,0.0050) (16384,0.0050) (524288,0.0050)};
+\addlegendentry{perlbench}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,1.4646) (16,0.1631) (64,0.0539) (256,0.0020) (1024,0.0020) (4096,0.0020) (16384,0.0020) (524288,0.0020)};
+\addlegendentry{x264}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,4.6800) (16,0.2082) (64,0.1381) (256,0.1252) (1024,0.1251) (4096,0.1250) (16384,0.1197) (524288,0.1197)};
+\addlegendentry{xalancbmk}
+\addplot+[mark=*, mark size=1.2pt] coordinates {(4,4.2434) (16,1.0963) (64,0.2779) (256,0.2029) (1024,0.1310) (4096,0.0778) (16384,0.0678) (524288,0.0678)};
+\addlegendentry{xz}
+\end{axis}
+\end{tikzpicture}
+\caption{Page fault rate (faults per access, including first-touch faults, in percent) versus physical memory size (two-level table with TLB; identical for the single-level table). Each curve levels off at the right at the benchmark's compulsory fault rate, the number of pages it touches divided by its number of accesses.}
+\label{fig:faultrate}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}
+\begin{axis}[report plot, xmode=log, ymode=log,
+  xlabel={Physical memory (frames, log scale)},
   ylabel={Evictions per access}]
 \addplot+[mark=*, mark size=1.2pt] coordinates {(4,0.03248863) (16,0.00738046) (64,0.00369358) (256,0.00036008) (1024,6.864e-05)};
 \addlegendentry{blender}
@@ -385,6 +408,8 @@ xz & 10\,061.3 & 2\,600.8 & 659.9 & 478.2 & 292.5 & 104.8 & 2.4 & 2.4 \\
 \label{fig:cycles}
 \end{figure}
 
+\paragraph{Page fault rate (A).} Figure~\ref{fig:faultrate} plots the page fault rate against physical memory size. Once memory is large enough that nothing is evicted, the rate is constant for each benchmark: it is just the compulsory first-touch faults divided by the number of accesses (Table~\ref{tab:part4}, last column). Below that point the fault rate increases as memory shrinks.
+
 \paragraph{When replacement starts (A).} In all 160 runs, a benchmark has zero evictions exactly when the number of frames is at least the number of pages it touches (Table~\ref{tab:part1}). Once memory is smaller than that, the number of faults minus the number of evictions equals the number of frames, i.e.\ memory fills completely before the first eviction.
 
 \paragraph{Cycles (B).} Wherever any eviction happens, the disk cost dominates: it accounts for at least 82.9\% of the total cycles in every run with at least one eviction. As a result, total cycles rise by orders of magnitude as soon as memory drops below a benchmark's footprint (Table~\ref{tab:part4cycles}, Figure~\ref{fig:cycles}).
@@ -429,7 +454,6 @@ xz & 11.85 & 0.405 & 29.3 \\
 \item ``Page fault rate'' in Part IV is faults per access including compulsory first-touch faults. The eviction rate (replacements per access) is also in \texttt{results/part\_iv.csv}.
 \item Every eviction is charged the full 20 million cycles. The read/write flags of the trace are ignored, so there is no distinction between clean and dirty pages and no write-back modelling.
 \item Page-table storage is not modelled as using physical frames, so it does not compete with the benchmark's pages for memory in Part IV.
-\item Timing figures come from a single run on one machine.
 \end{itemize}
 
 \end{document}
