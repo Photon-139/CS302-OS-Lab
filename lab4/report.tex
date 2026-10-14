@@ -90,7 +90,7 @@ The hash is a checksum, not a proof. If two runs end with different values, thei
 \paragraph{How the values are reported.} For each benchmark we report the final value of $H$ after the last access of the trace, as an unsigned 64-bit integer written as 16 hexadecimal digits. The single-level value is in the last column of Table~\ref{tab:part1} (Part I) and the two-level value in the last column of Table~\ref{tab:part2} (Part II), so the two can be compared row by row. The programs also compare the two values themselves: Part II compares the two-level run with a single-level run of the same trace, and Part III compares the single-level and two-level runs with the TLB; both print ``yes'' or ``NO'' in a \texttt{hash\_match} column. The hash is not reported for Part IV, where replacement changes which frames pages use.
 
 \subsection{Environment}
-The programs are compiled with g++ 13.3.0 using \texttt{-std=c++17 -O2}. The ten benchmark traces contain between 11.5 and 12.9 million accesses each. Traces are streamed from disk in 1\,MB chunks and parsed by hand.
+The programs are compiled with g++ using \texttt{-std=c++17 -O2}. The ten benchmark traces contain between 11.5 and 12.9 million accesses each. Traces are streamed from disk in 1\,MB chunks and parsed by hand.
 
 \section{Part I: Single-Level Page Table}
 

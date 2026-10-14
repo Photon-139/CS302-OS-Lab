@@ -1,4 +1,5 @@
 #include "tlb.hpp"
+#include <cstddef>
 #include <limits>
 
 TLB::TLB(int capacity) : entries(capacity) {}
@@ -27,7 +28,7 @@ void TLB::insert(int vpn, int frame){
     counter++;
     int candidate = -1;
     long long lru_time = std::numeric_limits<long long>::max();
-    for(size_t i = 0; i<entries.size(); ++i){
+    for(std::size_t i = 0; i<entries.size(); ++i){
         if(!entries[i].is_valid){
             candidate = i;
             break;
