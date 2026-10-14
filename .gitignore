@@ -2,3 +2,6 @@
 *.zip
 *.out
 temp/
+results/
+build/
+traces/
