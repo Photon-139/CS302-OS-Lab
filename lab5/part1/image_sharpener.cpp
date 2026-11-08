@@ -1,24 +1,11 @@
 #include <iostream>
-#include "libppm.h"
+#include "../libppm.h"
 #include <cstdint>
 #include <algorithm>
 #include <chrono>
 
 using namespace std;
 
-void free_image(struct image_t *image){
-	if(image==nullptr || image->image_pixels==nullptr){
-		return;
-	}
-	for(int i = 0; i<image->height; ++i){
-		for(int j = 0; j<image->width; ++j){
-			delete[] image->image_pixels[i][j];
-		}
-		delete[] image->image_pixels[i];
-	}
-	delete[] image->image_pixels;
-	delete image;
-}
 
 struct image_t* S1_smoothen(struct image_t *input_image)
 {
