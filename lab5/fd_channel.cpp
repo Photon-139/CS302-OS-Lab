@@ -1,6 +1,6 @@
 #include "fd_channel.hpp"
 #include "io_utils.hpp"
-#include "libppm.h"
+#include "libppm.hpp"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>

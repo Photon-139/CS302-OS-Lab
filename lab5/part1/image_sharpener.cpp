@@ -1,7 +1,7 @@
 #include <iostream>
 #include <cstdint>
 #include <chrono>
-#include "../libppm.h"
+#include "../libppm.hpp"
 #include "../image_operations.hpp"
 
 using namespace std;

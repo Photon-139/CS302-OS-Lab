@@ -17,7 +17,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include "../libppm.h"
+#include "../libppm.hpp"
 #include "../shm_ring.hpp"
 #include "../image_operations.hpp"
 #include "../config.hpp"

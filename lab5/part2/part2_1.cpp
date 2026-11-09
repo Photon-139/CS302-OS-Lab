@@ -9,7 +9,7 @@
 #include <cstring>
 #include <string>
 #include <pthread.h>
-#include "../libppm.h"
+#include "../libppm.hpp"
 #include "../spsc_ring.hpp"
 #include "../image_operations.hpp"
 #include "../config.hpp"

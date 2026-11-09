@@ -1,5 +1,5 @@
 #include "strip.hpp"
-#include "libppm.h"
+#include "libppm.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <arpa/inet.h>

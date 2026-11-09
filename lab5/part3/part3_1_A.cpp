@@ -17,7 +17,7 @@
 #include <string>
 #include <pthread.h>
 #include <unistd.h>
-#include "../libppm.h"
+#include "../libppm.hpp"
 #include "../spsc_ring.hpp"
 #include "../fd_channel.hpp"
 #include "../image_operations.hpp"

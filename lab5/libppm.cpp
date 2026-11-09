@@ -1,4 +1,4 @@
-#include "libppm.h"
+#include "libppm.hpp"
 #include <iostream>
 #include <fstream>
 
