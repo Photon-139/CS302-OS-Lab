@@ -4,7 +4,7 @@ OUTPUT = 1_out
 CXX = g++
 CXXFLAGS = -O2 -Wall -Wextra
 COMMON_SRC = ./libppm.cpp ./image_operations.cpp ./strip.cpp
-COMMON_HDR = ./libppm.h ./image_operations.hpp ./strip.hpp ./config.hpp
+COMMON_HDR = ./libppm.hpp ./image_operations.hpp ./strip.hpp ./config.hpp
 RING_SRC = ./spsc_ring.cpp
 RING_HDR = ./spsc_ring.hpp
 
