@@ -1,5 +1,5 @@
 #pragma once
-#include "libppm.h"
+#include "libppm.hpp"
 #include <cstddef>
 
 void S1_smooth(const flat_image_t* orig, int r0, int r1, uint8_t* __restrict out);
