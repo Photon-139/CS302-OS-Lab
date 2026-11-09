@@ -1,6 +1,7 @@
 #ifndef LIBPPM_H
 #define LIBPPM_H
 #include <cstdint>
+#include <cstddef>
 
 struct image_t
 {
@@ -16,11 +17,18 @@ struct flat_image_t
 	uint8_t* image_pixels;
 };
 
+constexpr int CHANNELS = 3;
+
+inline size_t pixel_index(int width, int r, int c, int ch){
+	return r*((size_t)width*CHANNELS) + c*CHANNELS + ch;
+}
+
 struct image_t* read_ppm_file(char* path_to_input_file);
 void write_ppm_file(char* path_to_output_file, struct image_t* image);
 void free_image(struct image_t* image);
 
 struct flat_image_t* read_ppm_file_flat(char* path_to_input_file);
 void write_ppm_file_flat(char* path_to_output_file, struct flat_image_t* image);
+void free_flat_image(struct flat_image_t* image);
 
 #endif
