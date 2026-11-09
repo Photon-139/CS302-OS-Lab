@@ -40,6 +40,12 @@ run-part1: ./part1.out
 clean-part1:
 	rm -f part1.out
 
+# Serial baseline for speedup measurements (not a graded target): same work as the variants,
+# one thread. Run via scripts/serial_baseline.sh, or directly:
+#   ./serial_baseline.out <variant> <input.ppm> <output.ppm>
+./serial_baseline.out: ./part1/serial_baseline.cpp $(COMMON_SRC) $(COMMON_HDR)
+	$(CXX) $(CXXFLAGS) ./part1/serial_baseline.cpp $(COMMON_SRC) -o serial_baseline.out
+
 # ---------------- Part II.1: threads + atomics ----------------
 
 ./part2_1.out: ./part2/part2_1.cpp $(COMMON_SRC) $(COMMON_HDR) $(RING_SRC) $(RING_HDR)
