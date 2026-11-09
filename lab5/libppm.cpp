@@ -206,7 +206,7 @@ struct flat_image_t* read_ppm_file_flat(char* path_to_input_file){
 	}
 }
 
-void write_ppm_file_flat(char* path_to_output_file, struct flat_image_t* image){
+void write_ppm_file_flat(const char* path_to_output_file, struct flat_image_t* image){
 	ofstream write_stream(path_to_output_file, ios::binary | ios::out);
 
 	if(write_stream.is_open())

@@ -5,12 +5,6 @@
 #include <cstdint>
 #include "strip.hpp"
 
-// One slot as seen by a stage: its header and its pixel area.
-// Non-owning; valid until the matching publish()/release().
-struct strip_view {
-    strip_hdr* hdr;
-    uint8_t*   pixels;      // room for slot_bytes = k × width × 3 bytes
-};
 
 constexpr int SPINS = 1024;
 

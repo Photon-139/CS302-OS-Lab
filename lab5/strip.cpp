@@ -2,6 +2,8 @@
 #include "libppm.h"
 #include <cstdio>
 #include <cstdlib>
+#include <arpa/inet.h>
+#include <cstring>
 
 static constexpr uint64_t FNV_PRIME = 0x100000001b3ULL;
 
@@ -61,4 +63,25 @@ void verify_strip(const strip_hdr& hdr, const uint8_t* pixels, int width,
                 (unsigned long long)hdr.checksum, (unsigned long long)computed);
         abort();
     }
+}
+
+void encode_header(const strip_hdr& h, uint8_t out[WIRE_HDR_BYTES])
+{
+    const uint32_t words[6] = {
+        htonl(h.iteration), htonl(h.r0), htonl(h.nrows), htonl(h.flags),
+        htonl((uint32_t)(h.checksum >> 32)),          // high half
+        htonl((uint32_t)(h.checksum & 0xffffffffu)),  // low half
+    };
+    std::memcpy(out, words, WIRE_HDR_BYTES);
+}
+
+void decode_header(const uint8_t in[WIRE_HDR_BYTES], strip_hdr& h)
+{
+    uint32_t words[6];
+    std::memcpy(words, in, WIRE_HDR_BYTES);
+    h.iteration = ntohl(words[0]);
+    h.r0        = ntohl(words[1]);
+    h.nrows     = ntohl(words[2]);
+    h.flags     = ntohl(words[3]);
+    h.checksum  = ((uint64_t)ntohl(words[4]) << 32) | ntohl(words[5]);
 }
