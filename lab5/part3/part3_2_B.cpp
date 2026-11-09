@@ -2,11 +2,11 @@
 // single-producer/single-consumer ring (as in Part II.1). S2 receives the smoothed strips from
 // S1 on machine A over TCP; S3 sharpens and writes the output image (part3_2_A.cpp runs S1).
 //
-// Usage: ./part3_2_B <input.ppm> <output.ppm> <port>
+// Usage: ./part3_2_B <variant> <input.ppm> <output.ppm> <port>
 //
-// Start B first; it waits for A to connect. B takes k, the variant and the ring capacity from
-// the run parameters A sends, so the two machines cannot disagree; it only checks that A used
-// the same image size and was built with the same iteration counts. When the output is written,
+// Start B first; it waits for A to connect. B takes k and the ring capacity from the run
+// parameters A sends; it checks that A runs the same variant as B was started with, used the
+// same image size and was built with the same iteration counts. When the output is written,
 // B tells A ("done"), so A can measure the end-to-end time with its own clock.
 
 #include <iostream>
@@ -230,13 +230,18 @@ void* s3_variant2(void* arg){
 // ---------------------------------------------------------------------------
 
 int main(int argc, char** argv){
-    if(argc != 4){
-        std::cerr << "Usage: ./part3_2_B <path-to-input-image> <path-to-output-image> <port>" << std::endl;
+    if(argc != 5){
+        std::cerr << "Usage: ./part3_2_B <variant> <path-to-input-image> <path-to-output-image> <port>" << std::endl;
         return 1;
     }
-    char* input_path        = argv[1];
-    const char* output_path = argv[2];
-    int port = std::stoi(argv[3]);
+    const int variant = std::stoi(argv[1]);
+    if(variant != 1 && variant != 2){
+        std::cerr << "Unknown variant: " << variant << std::endl;
+        return 1;
+    }
+    char* input_path        = argv[2];
+    const char* output_path = argv[3];
+    int port = std::stoi(argv[4]);
 
     // If A dies, writes fail with EPIPE ("Broken pipe" from writen) instead of killing B silently.
     signal(SIGPIPE, SIG_IGN);
@@ -245,7 +250,7 @@ int main(int argc, char** argv){
     struct flat_image_t* image = read_ppm_file_flat(input_path);
     auto read_end = std::chrono::steady_clock::now();
 
-    // Wait for A, then take k, the variant and the ring capacity from the parameters it sends.
+    // Wait for A, then take k and the ring capacity from the parameters it sends.
     int socket_fd = listen_on(port);
     set_nodelay(socket_fd);
     run_params params = recv_params(socket_fd);     // exits on a wrong magic
@@ -265,11 +270,19 @@ int main(int argc, char** argv){
         free_flat_image(image);
         return 1;
     }
+    // Both machines must run the same variant (otherwise the output file name, taken from B's
+    // variant, would not match the work A did).
+    if(params.variant != (uint32_t)variant){
+        std::cerr << "variant mismatch: A runs variant " << params.variant
+                  << ", B was started with variant " << variant << std::endl;
+        close(socket_fd);
+        free_flat_image(image);
+        return 1;
+    }
     const int k = (int)params.k;
-    const int variant = (int)params.variant;
     const int ring_capacity = (int)params.ring_capacity;
-    if(k < 1 || k > image->height || (variant != 1 && variant != 2) || ring_capacity < 1){
-        std::cerr << "invalid parameters from A: k=" << k << " variant=" << variant
+    if(k < 1 || k > image->height || ring_capacity < 1){
+        std::cerr << "invalid parameters from A: k=" << k
                   << " ring capacity=" << ring_capacity << std::endl;
         close(socket_fd);
         free_flat_image(image);

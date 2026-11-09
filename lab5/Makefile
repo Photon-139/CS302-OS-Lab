@@ -90,7 +90,7 @@ part2_3_variant2: ./part2_3.out
 	./part2_3.out 2 ./images/$(INPUT).ppm ./part2/output_part2_3_variant2.ppm
 
 # ---------------- Part III.1: A = S1 + S2 (threads), B = S3, over TCP ----------------
-# B takes k and the variant from A; the variant in B's target name only selects the output file.
+# B takes k from A; B is given the variant too and rejects a run where A's variant differs.
 
 ./part3_1_A.out: ./part3/part3_1_A.cpp $(COMMON_SRC) $(COMMON_HDR) $(RING_SRC) $(RING_HDR) $(PIPE_SRC) $(PIPE_HDR) $(NET_SRC) $(NET_HDR)
 	$(CXX) $(CXXFLAGS) -pthread ./part3/part3_1_A.cpp $(COMMON_SRC) $(RING_SRC) $(PIPE_SRC) $(NET_SRC) -o part3_1_A.out
@@ -102,17 +102,17 @@ part3_1_variant1_A: ./part3_1_A.out
 	./part3_1_A.out 1 ./images/$(INPUT).ppm $(HOST) $(PORT)
 
 part3_1_variant1_B: ./part3_1_B.out
-	./part3_1_B.out ./images/$(INPUT).ppm ./part3/output_part3_1_variant1.ppm $(PORT)
+	./part3_1_B.out 1 ./images/$(INPUT).ppm ./part3/output_part3_1_variant1.ppm $(PORT)
 
 part3_1_variant2_A: ./part3_1_A.out
 	./part3_1_A.out 2 ./images/$(INPUT).ppm $(HOST) $(PORT)
 
 part3_1_variant2_B: ./part3_1_B.out
-	./part3_1_B.out ./images/$(INPUT).ppm ./part3/output_part3_1_variant2.ppm $(PORT)
+	./part3_1_B.out 2 ./images/$(INPUT).ppm ./part3/output_part3_1_variant2.ppm $(PORT)
 
 # ---------------- Part III.2: A = S1, B = S2 + S3 (threads), over TCP ----------------
-# B takes k, the variant and the ring capacity from A; the variant in B's target name only
-# selects the output file.
+# B takes k and the ring capacity from A; B is given the variant too and rejects a run where
+# A's variant differs.
 
 ./part3_2_A.out: ./part3/part3_2_A.cpp $(COMMON_SRC) $(COMMON_HDR) $(PIPE_SRC) $(PIPE_HDR) $(NET_SRC) $(NET_HDR)
 	$(CXX) $(CXXFLAGS) -pthread ./part3/part3_2_A.cpp $(COMMON_SRC) $(PIPE_SRC) $(NET_SRC) -o part3_2_A.out
@@ -124,13 +124,13 @@ part3_2_variant1_A: ./part3_2_A.out
 	./part3_2_A.out 1 ./images/$(INPUT).ppm $(HOST) $(PORT)
 
 part3_2_variant1_B: ./part3_2_B.out
-	./part3_2_B.out ./images/$(INPUT).ppm ./part3/output_part3_2_variant1.ppm $(PORT)
+	./part3_2_B.out 1 ./images/$(INPUT).ppm ./part3/output_part3_2_variant1.ppm $(PORT)
 
 part3_2_variant2_A: ./part3_2_A.out
 	./part3_2_A.out 2 ./images/$(INPUT).ppm $(HOST) $(PORT)
 
 part3_2_variant2_B: ./part3_2_B.out
-	./part3_2_B.out ./images/$(INPUT).ppm ./part3/output_part3_2_variant2.ppm $(PORT)
+	./part3_2_B.out 2 ./images/$(INPUT).ppm ./part3/output_part3_2_variant2.ppm $(PORT)
 
 # ---------------- cleanup ----------------
 
