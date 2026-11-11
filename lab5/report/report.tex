@@ -1,0 +1,1185 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{caption}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+
+\pgfplotscreateplotcyclelist{tenseries}{
+  color=red,mark=*\\
+  color=blue,mark=square*\\
+  color=green!50!black,mark=triangle*\\
+  color=orange,mark=diamond*\\
+  color=violet,mark=pentagon*\\
+  color=cyan!70!black,mark=o\\
+  color=magenta,mark=square\\
+  color=brown,mark=triangle\\
+  color=gray,mark=diamond\\
+  color=black,mark=x\\
+}
+\pgfplotsset{
+  report plot/.style={
+    width=\linewidth, height=7.5cm, grid=major, cycle list name=tenseries,
+    legend columns=5, legend style={at={(0.5,-0.3)}, anchor=north, font=\scriptsize}
+  }
+}
+\newcommand{\fit}[1]{\resizebox{\ifdim\width>\linewidth\linewidth\else\width\fi}{!}{#1}}
+\title{\textbf{Lab Report} \\ Operating Systems Laboratory \\ Assignment 5: Parallel Applications}
+\author{Anshuman Rahul (CS24BT060) \\ Sidharth B (CS24BT061)}
+\date{}
+
+% ---------------------------------------------------------------------
+% Additions for this report
+% ---------------------------------------------------------------------
+\usepgfplotslibrary{groupplots}     % grids of plots (Figures 3 and 4)
+\usepackage{pgfplotstable}          % computed columns (relative times in Figures 3 and 4)
+\usepackage[section]{placeins}      % tables/figures stay within their own section
+\usepackage[hidelinks]{hyperref}    % clickable cross-references
+
+% Run configuration (config.hpp).
+\newcommand{\cfgIterations}{1000}
+\newcommand{\cfgK}{8}
+\newcommand{\cfgRing}{16}
+\newcommand{\cfgPasses}{100}
+\newcommand{\cfgResults}{10}
+
+\pgfplotscreateplotcyclelist{programs}{
+  color=red,mark=*\\
+  color=blue,mark=square*\\
+  color=green!50!black,mark=triangle*\\
+}
+\pgfplotscreateplotcyclelist{rings}{
+  color=red,mark=*\\
+  color=green!50!black,mark=triangle*\\
+}
+\pgfplotsset{
+  sweep plot/.style={
+    width=0.47\linewidth, height=5cm, grid=major,
+    xmode=log, log basis x=2, log ticks with fixed point,
+    tick label style={font=\scriptsize}, label style={font=\small},
+    title style={font=\small}
+  }
+}
+\newcommand{\code}[1]{\texttt{#1}}
+
+% ---------------------------------------------------------------------
+% Plot data (seconds). Columns: part2_1 = threads, part2_2 = pipes, part2_3 = shared memory.
+% ---------------------------------------------------------------------
+
+% Speedup over serial at k = 8, N = 16; bound = T_serial / T_S1 (serial run).
+\pgfplotstableread{
+image part2_1 part2_2 part2_3 bound
+1 0.9798 0.9592 0.9801 1.0860
+2 0.9603 0.9317 0.9464 1.0790
+4 0.9491 0.9234 0.9434 1.0760
+}\speedupVOne
+\pgfplotstableread{
+image part2_1 part2_2 part2_3 bound
+1 1.0768 1.0676 1.0659 1.0720
+2 1.0766 1.0675 1.0724 1.0732
+4 1.0748 1.0650 1.0623 1.0746
+}\speedupVTwo
+
+% Pipeline time against k (N = 16).
+\pgfplotstableread{
+k part2_1 part2_2 part2_3
+1 3.05 3.27 3.31
+2 3.03 3.22 3.41
+4 2.97 3.07 3.10
+8 2.98 3.05 2.99
+16 2.99 3.05 3.08
+32 3.01 3.13 2.96
+64 2.99 4.32 2.98
+128 2.98 5.45 2.95
+}\sweepBimgOneVOne
+\pgfplotstableread{
+k part2_1 part2_2 part2_3
+1 2.62 2.66 2.72
+2 2.67 2.65 2.65
+4 2.64 2.65 2.66
+8 2.63 2.64 2.70
+16 2.61 2.65 2.68
+32 2.64 2.64 2.63
+64 2.65 2.76 2.68
+128 2.64 2.71 2.65
+}\sweepBimgOneVTwo
+\pgfplotstableread{
+k part2_1 part2_2 part2_3
+1 11.34 11.93 11.81
+2 11.30 11.55 11.72
+4 11.32 11.60 11.45
+8 11.29 11.57 11.47
+16 11.28 11.62 11.40
+32 11.23 16.34 11.37
+64 11.25 15.39 11.39
+128 11.30 13.73 11.31
+}\sweepBimgTwoVOne
+\pgfplotstableread{
+k part2_1 part2_2 part2_3
+1 9.98 10.09 10.08
+2 9.96 10.10 10.05
+4 10.01 10.03 9.99
+8 9.93 10.03 9.99
+16 9.96 10.04 10.07
+32 10.00 10.11 10.05
+64 10.01 10.03 10.03
+128 9.95 10.06 10.02
+}\sweepBimgTwoVTwo
+\pgfplotstableread{
+k part2_1 part2_2 part2_3
+1 42.77 43.70 43.95
+2 42.55 43.62 43.40
+4 42.60 43.28 43.17
+8 42.61 43.47 43.01
+16 42.55 43.77 42.87
+32 42.61 57.67 42.66
+64 42.69 60.43 42.77
+128 42.59 56.17 42.78
+}\sweepBimgFourVOne
+\pgfplotstableread{
+k part2_1 part2_2 part2_3
+1 37.85 37.78 37.78
+2 37.59 37.97 37.72
+4 37.70 37.84 37.92
+8 37.66 37.94 37.80
+16 37.64 37.96 37.91
+32 37.63 37.90 37.75
+64 37.77 37.84 37.74
+128 37.75 37.87 37.83
+}\sweepBimgFourVTwo
+
+% Pipeline time against N (k = 8).
+\pgfplotstableread{
+N part2_1 part2_3
+1 3.78 12.00
+2 2.99 3.09
+4 2.94 3.04
+8 2.97 3.04
+16 2.98 3.00
+32 2.98 3.02
+64 2.98 3.00
+}\sweepCimgOneVOne
+\pgfplotstableread{
+N part2_1 part2_3
+1 2.65 3.01
+2 2.64 2.71
+4 2.65 2.69
+8 2.62 2.64
+16 2.66 2.70
+32 2.62 2.65
+64 2.66 2.65
+}\sweepCimgOneVTwo
+\pgfplotstableread{
+N part2_1 part2_3
+1 14.30 42.95
+2 11.39 13.51
+4 11.19 11.46
+8 11.29 11.36
+16 11.24 11.39
+32 11.28 11.41
+64 11.28 11.45
+}\sweepCimgTwoVOne
+\pgfplotstableread{
+N part2_1 part2_3
+1 10.02 10.28
+2 10.05 10.03
+4 10.00 10.05
+8 10.03 10.00
+16 10.00 10.01
+32 10.01 10.09
+64 9.98 10.01
+}\sweepCimgTwoVTwo
+\pgfplotstableread{
+N part2_1 part2_3
+1 54.39 129.86
+2 42.36 43.35
+4 42.37 42.81
+8 42.33 43.02
+16 42.69 43.00
+32 42.61 43.06
+64 42.50 42.95
+}\sweepCimgFourVOne
+\pgfplotstableread{
+N part2_1 part2_3
+1 37.79 38.92
+2 37.61 37.93
+4 37.93 37.89
+8 37.62 38.06
+16 37.95 37.99
+32 37.83 37.79
+64 37.74 37.73
+}\sweepCimgFourVTwo
+
+\begin{document}
+\maketitle
+
+% =====================================================================
+\section{Introduction}
+The application is the image sharpener from Lab~1. It runs three stages on every pixel and
+colour channel of a PPM image:
+\begin{itemize}
+\item \textbf{S1, smooth:} the mean of the $3\times3$ neighbourhood (edge pixels are replicated at
+  the borders);
+\item \textbf{S2, details:} $d = \max(0,\ \text{original} - \text{smoothed})$;
+\item \textbf{S3, sharpen:} $\text{output} = \min(255,\ \text{original} + d)$.
+\end{itemize}
+S2 needs S1's result and S3 needs S2's, so the stages can run in parallel only as a
+\emph{pipeline}: while S3 works on one part of the image, S2 works on the next and S1 on the one
+after that. This report covers a serial version (Part~I); three pipelined versions on one
+machine, using threads with atomics, processes with pipes, and processes with shared memory and
+semaphores (Part~II); and a version split over two machines connected by TCP (Part~III). Every
+pipelined version is built in two variants (Section~\ref{sec:variants}). For each version we
+check that the data arrives exactly as sent, and we measure runtime and speedup.
+
+% =====================================================================
+\section{Experimental setup}
+
+\subsection{The two variants}
+\label{sec:variants}
+\begin{itemize}
+\item \textbf{Variant 1:} the whole computation (S1, S2, S3 over the image) is repeated
+  \cfgIterations{} times, and every iteration streams through the pipeline. The output of the last
+  iteration is written to the file.
+\item \textbf{Variant 2:} every stage runs \cfgIterations{} passes in blocks of \cfgPasses. Only
+  one result per block is handed to the next stage, so each link carries \cfgResults{} images
+  instead of \cfgIterations. The other passes are ordinary computations whose output stays inside
+  the stage.
+\end{itemize}
+Every pass reads unchanged input, so all iterations and passes produce the same image, and the
+final output equals one run of the serial sharpener.
+
+\subsection{Run configuration and method}
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+Parameter & Value \\
+\midrule
+Iterations (Variant 1) / passes per stage (Variant 2) & \cfgIterations \\
+Passes per result (Variant 2) & \cfgPasses \\
+Results sent per link (Variant 2) & \cfgResults \\
+Default strip height $k$ (rows) & \cfgK \\
+Default ring capacity $N$ (strips) & \cfgRing \\
+Runs per configuration & 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+All programs are compiled with \code{g++ -O2} and print their own measurements. All times come
+from \code{std::chrono::steady\_clock}:
+\begin{itemize}
+\item \textbf{Serial time} is the time spent computing all passes of S1, S2 and S3 (excluding
+  reading and writing the image).
+\item \textbf{Pipeline time} runs from starting the stages until all of them have finished,
+  including S3 writing the output file (a few milliseconds at most). Reading the input image comes
+  before and is not included.
+\item \textbf{Speedup} is serial time divided by pipeline time, for the same image and variant.
+\end{itemize}
+Each stage also keeps its own counters (busy, verify, wait in, wait out; see
+Section~\ref{sec:stages}), and each end of every link counts what it sent or received
+(Section~\ref{sec:verification}). Each configuration was run once. As a rough guide to
+run-to-run variation, in Variant~2 the strip height should not matter at all, yet the threads
+version's times for image~4 vary by 0.7\% across the values of $k$ (Table~\ref{tab:k-v2}).
+Differences of about 1\% are therefore not significant.
+
+\subsection{Test images}
+All measurements use the same three images (Table~\ref{tab:images}, Figure~\ref{fig:images}).
+\begin{table}[htbp]
+\centering
+\caption{Test images. Strips per image are for the default $k=\cfgK$.}
+\label{tab:images}
+\begin{tabular}{rrrrrr}
+\toprule
+Image & Width & Height & Pixels & File size (MB) & Strips per image \\
+\midrule
+1 & 450 & 180 & 81{,}000 & 0.24 & 23 \\
+2 & 786 & 393 & 308{,}898 & 0.93 & 50 \\
+4 & 1280 & 910 & 1{,}164{,}800 & 3.49 & 114 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[p]
+\centering
+\newcommand{\imagepair}[1]{%
+  \begin{minipage}[t]{0.48\linewidth}\centering
+    \includegraphics[width=\linewidth]{figures/img_#1_in.png}\\[2pt]
+    \small Image #1, input
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.48\linewidth}\centering
+    \includegraphics[width=\linewidth]{figures/img_#1_out.png}\\[2pt]
+    \small Image #1, sharpened
+  \end{minipage}}
+\imagepair{1}\par\bigskip
+\imagepair{2}\par\bigskip
+\imagepair{4}
+\caption{The test images and the sharpened outputs. Every program produced exactly these outputs
+(byte-identical to the serial reference).}
+\label{fig:images}
+\end{figure}
+
+% =====================================================================
+\section{Design and implementation}
+
+\subsection{Common structure}
+\paragraph{Strips.} The unit of work and of communication is a \emph{strip} of $k$ consecutive
+image rows ($k$ is a command-line argument, default \cfgK). The last strip of an image has
+$h \bmod k$ rows when $k$ does not divide the height $h$. All three kernels work on row ranges:
+\code{S1\_smooth(orig, r0, r1, out)} computes rows $[r_0, r_1)$, reading one row above and below
+from the original image, and \code{S2\_details}/\code{S3\_sharpen} work pointwise on $n$ bytes.
+A stage can therefore compute a strip as soon as it has received it, and the pipeline fills
+after one strip instead of one full image. Images are stored as one flat array of
+$h \times w \times 3$ bytes, so a strip is one contiguous block of memory.
+
+\paragraph{Strip header.} Every strip travels with a 24-byte header: \code{iteration} (the
+iteration in Variant~1, the result number in Variant~2), \code{r0} (first row), \code{nrows},
+\code{flags} (reserved, 0) and a 64-bit \code{checksum} (Section~\ref{sec:verification}).
+
+\paragraph{Channel interface.} All three transports offer the same four operations, so the stage
+code is the same apart from the channel type:
+\begin{itemize}
+\item producer: \code{acquire()} returns a slot (header and pixel area) to compute into;
+  \code{publish()} hands it to the consumer;
+\item consumer: \code{receive()} returns the next filled slot; \code{release()} gives it back once
+  it is no longer needed.
+\end{itemize}
+S1 computes straight into the acquired slot. S2 receives a strip, computes the details into a
+slot of its output channel, publishes that, and releases its input. S3 computes into the final
+image.
+
+\subsection{Part I: serial version}
+Part~I runs S1, S2 and S3 once over the whole image and writes the result; its output is the
+reference for all other parts. For the speedup measurements, a separate serial baseline does
+exactly the work of the pipelined versions (\cfgIterations{} passes of each stage, in both
+variants, with the same kernels) in one thread, and times each stage separately.
+
+\subsection{Part II.1: threads and atomics}
+The three stages are three threads of one process, connected by two single-producer,
+single-consumer ring buffers of $N$ slots (default \cfgRing). Each ring holds two 64-bit counters
+that only ever grow: \code{head} (slots published, written only by the producer) and \code{tail}
+(slots released, written only by the consumer). Slot $i$ is at index $i \bmod N$; the ring is
+full when $\text{head}-\text{tail} = N$ and empty when $\text{head} = \text{tail}$.
+\begin{itemize}
+\item \code{publish()} stores \code{head + 1} with \emph{release} ordering, and \code{receive()}
+  loads \code{head} with \emph{acquire} ordering. All writes to the slot's header and pixels
+  therefore happen-before the consumer reads them.
+\item In the other direction, \code{release()} stores \code{tail} with release ordering and
+  \code{acquire()} loads it with acquire ordering. The producer therefore never overwrites a slot
+  the consumer is still reading.
+\end{itemize}
+No locks are used. \code{head} and \code{tail} are on separate cache lines, so the two threads
+do not slow each other down through false sharing. A thread that has to wait spins with a
+\code{pause} instruction for up to 1024 rounds and then calls \code{sched\_yield()}.
+
+\subsection{Part II.2: processes and pipes}
+The three stages are three processes created with \code{fork()}, connected by two pipes created
+before the fork. Each child closes the pipe ends it does not use, and the parent closes all of
+them. This matters for failures: a reader only sees end-of-file, and a writer only gets
+\code{EPIPE}, once \emph{every} copy of the other end is closed. A pipe is a byte stream, so a
+strip is sent as its header followed by $\text{nrows}\times w\times3$ pixel bytes. The receiver
+first reads the header, checks that \code{nrows} is at most $k$, and then reads exactly that many
+pixel bytes. \code{readn}/\code{writen} loop until all bytes are transferred, because a pipe may
+return fewer bytes than requested, and they retry after \code{EINTR}. Unlike the rings, every
+strip is copied twice: from the producer into the kernel and from the kernel into the consumer.
+The parent waits for the three children and reports a failure if any of them did not exit
+normally.
+
+\subsection{Part II.3: processes, shared memory and semaphores}
+The stages are again three processes, but they communicate through two rings in POSIX shared
+memory. Each ring is one region created with \code{shm\_open}, sized with \code{ftruncate} and
+mapped with \code{mmap(MAP\_SHARED)} by the parent \emph{before} forking, so all children
+inherit the mapping. The name is unlinked immediately after mapping, so nothing is left behind in
+\code{/dev/shm}, even if a process crashes. The region holds two unnamed process-shared
+semaphores, $N$ headers and $N$ pixel slots:
+\begin{itemize}
+\item \code{empty} (initially $N$): \code{acquire()} waits on it, and \code{release()} posts it;
+\item \code{full} (initially 0): \code{receive()} waits on it, and \code{publish()} posts it.
+\end{itemize}
+The semaphores provide both the waiting and the memory ordering. Each process keeps its own
+slot index. The parent waits for whichever stage finishes first; if a stage fails, the parent
+kills the remaining ones, which would otherwise wait on a semaphore forever.
+
+\subsection{Variant 2}
+Every stage loops over \cfgResults{} results of \cfgPasses{} passes each. Only pass~0 of each
+block communicates: S1 computes into channel slots and publishes them, S2 and S3 receive. On the
+other passes, S1 writes into a private scratch buffer. S2 and S3 keep the strips received on
+pass~0 in a private buffer and recompute from that unchanged input on the remaining passes. Every
+stage thus still does \cfgIterations{} passes of work, as in Variant~1 and the serial baseline,
+but each link carries only \cfgResults{} images.
+
+\subsection{Part III: two machines}
+The pipeline is split over two machines, A and B, connected by one TCP connection:
+\begin{itemize}
+\item \textbf{Partition 1:} A runs S1 and S2 as two threads with a ring between them (as in
+  Part~II.1); B runs S3. The S2$\to$S3 link crosses the network.
+\item \textbf{Partition 2:} A runs S1; B runs S2 and S3 as two threads with a ring. The
+  S1$\to$S2 link crosses the network.
+\end{itemize}
+The socket uses the same byte-stream channel as the pipes. Header fields are converted to network
+byte order, and Nagle's algorithm is disabled (\code{TCP\_NODELAY}) so strips are sent
+immediately. B is started first and listens; A connects, retrying for about 10 seconds. A then
+sends a fixed-size run-parameter message:
+\begin{itemize}
+\item a magic number, the image size, $k$, the variant, the ring capacity;
+\item the iteration and pass counts compiled into A;
+\item a 64-bit hash of A's input image.
+\end{itemize}
+B takes $k$ (and, in partition~2, $N$) from this message, and refuses to start if the size, variant, counts or image
+hash differ from its own. The two machines' clocks are not synchronised, so all timing is done
+on A: after writing the output file, B sends a one-byte ``done'' message, and A's end-to-end
+time runs from starting its stages until that byte arrives.
+
+% =====================================================================
+\section{Verifying correctness}
+\label{sec:verification}
+Correctness is checked at four levels. All checks are always on, including in the measured
+runs, so the reported times include their cost.
+
+\paragraph{1. Output against the reference.} Every output image is compared byte by byte (with
+\code{cmp}) against the output of the serial sharpener. This shows end to end that the stages
+computed the right result and that S3 put every strip in the right place.
+
+\paragraph{2. Per-strip header and checksum.} Just before publishing a strip, the sender
+computes a 64-bit FNV-1a hash over the header fields and the pixel bytes and stores it in the
+header. Every stage walks the same fixed loop over iterations and row ranges, so the receiver
+knows exactly which strip must come next. For each strip, \code{verify\_strip} checks that
+\code{iteration}, \code{r0} and \code{nrows} have the expected values, and recomputes and compares
+the checksum. On any mismatch, the program prints which strip failed and aborts before writing
+an output. These checks catch:
+\begin{itemize}
+\item corrupted pixel or header bytes (for example a slot overwritten too early, or a partial
+  read), through a checksum mismatch;
+\item lost, duplicated or reordered strips, through an unexpected position;
+\item a stream that ends too early because a stage died (pipes and sockets), through
+  end-of-file in the middle of a strip.
+\end{itemize}
+
+\paragraph{3. Link statistics on both ends.} Both ends of every link count the strips and
+payload bytes that pass through. They also keep a running hash, \code{stream}, into which each
+strip's checksum is folded in order. The sender updates its counters on publishing. The
+receiver updates its counters only after \code{verify\_strip} has accepted the strip. Equal
+values on both sides show that the receiver accepted exactly the strips that were sent, with the
+same content and in the same order: swapping two strips changes the stream hash. The expected
+counts follow from the image: $\lceil h/k\rceil$ strips per image, times \cfgIterations{}
+(Variant~1) or \cfgResults{} (Variant~2) images.
+
+\paragraph{4. Run parameters (Part~III).} The handshake described above ensures that both
+machines work on the same image with the same settings. This matters because S2 and S3 on B
+read B's own copy of the input image, which the per-strip checks alone would not cover.
+
+\paragraph{Limitations.} FNV-1a is not a cryptographic hash. It detects accidental corruption,
+not deliberate tampering; an accidental change goes unnoticed with probability about $2^{-64}$
+per strip. The strip checks cover the \emph{transfer} only; that the stages \emph{compute}
+correctly is shown by the comparison with the reference.
+
+\paragraph{Results.} Table~\ref{tab:links} shows both ends of every link for image~4. In Variant~1 each link carries
+$114\times1000 = 114{,}000$ strips and in Variant~2 $114\times10 = 1{,}140$, as expected.
+
+\begin{table}[htbp]
+\centering
+\caption{Link statistics of both ends of every link (image 4, $k=\cfgK$, $N=\cfgRing$). Strips
+and bytes are totals over the run.}
+\label{tab:links}
+\fit{%
+\begin{tabular}{llllrrl}
+\toprule
+Variant & Program & Link & Side & Strips & Payload bytes & Stream hash \\
+\midrule
+1 & Threads & S1$\to$S2 & send & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{29d8d98fb66b61fd} \\
+ &  & S1$\to$S2 & recv & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{29d8d98fb66b61fd} \\
+ &  & S2$\to$S3 & send & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{d178aee5e5809a0b} \\
+ &  & S2$\to$S3 & recv & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{d178aee5e5809a0b} \\
+\addlinespace
+1 & Pipes & S1$\to$S2 & send & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{29d8d98fb66b61fd} \\
+ &  & S1$\to$S2 & recv & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{29d8d98fb66b61fd} \\
+ &  & S2$\to$S3 & send & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{d178aee5e5809a0b} \\
+ &  & S2$\to$S3 & recv & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{d178aee5e5809a0b} \\
+\addlinespace
+1 & Shared mem. & S1$\to$S2 & send & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{29d8d98fb66b61fd} \\
+ &  & S1$\to$S2 & recv & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{29d8d98fb66b61fd} \\
+ &  & S2$\to$S3 & send & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{d178aee5e5809a0b} \\
+ &  & S2$\to$S3 & recv & 114{,}000 & 3{,}494{,}400{,}000 & \texttt{d178aee5e5809a0b} \\
+\addlinespace
+2 & Threads & S1$\to$S2 & send & 1{,}140 & 34{,}944{,}000 & \texttt{d20f58811324790b} \\
+ &  & S1$\to$S2 & recv & 1{,}140 & 34{,}944{,}000 & \texttt{d20f58811324790b} \\
+ &  & S2$\to$S3 & send & 1{,}140 & 34{,}944{,}000 & \texttt{828a6fd8aeb69287} \\
+ &  & S2$\to$S3 & recv & 1{,}140 & 34{,}944{,}000 & \texttt{828a6fd8aeb69287} \\
+\addlinespace
+2 & Pipes & S1$\to$S2 & send & 1{,}140 & 34{,}944{,}000 & \texttt{d20f58811324790b} \\
+ &  & S1$\to$S2 & recv & 1{,}140 & 34{,}944{,}000 & \texttt{d20f58811324790b} \\
+ &  & S2$\to$S3 & send & 1{,}140 & 34{,}944{,}000 & \texttt{828a6fd8aeb69287} \\
+ &  & S2$\to$S3 & recv & 1{,}140 & 34{,}944{,}000 & \texttt{828a6fd8aeb69287} \\
+\addlinespace
+2 & Shared mem. & S1$\to$S2 & send & 1{,}140 & 34{,}944{,}000 & \texttt{d20f58811324790b} \\
+ &  & S1$\to$S2 & recv & 1{,}140 & 34{,}944{,}000 & \texttt{d20f58811324790b} \\
+ &  & S2$\to$S3 & send & 1{,}140 & 34{,}944{,}000 & \texttt{828a6fd8aeb69287} \\
+ &  & S2$\to$S3 & recv & 1{,}140 & 34{,}944{,}000 & \texttt{828a6fd8aeb69287} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+% =====================================================================
+\section{Results: Part II}
+\label{sec:results2}
+All three images were run in both variants. Each table states the strip height $k$ and ring
+capacity $N$ it was measured with; the defaults are $k=\cfgK$ and $N=\cfgRing$. Where a best
+value is meaningful (the fastest program, or the best $k$ or $N$), it is shown in bold.
+
+\subsection{How fast can the pipeline be?}
+The serial program runs the three stages one after the other, so its time is the sum of the
+three stage times:
+\[
+  T_\text{serial} = T_\text{S1} + T_\text{S2} + T_\text{S3}.
+\]
+In the pipeline, every stage is a separate thread or process, and S1 performs exactly the same
+computation as in the serial program: all \cfgIterations{} passes over the image. S1 is a single
+thread of execution, so however fast S2 and S3 are, the pipeline cannot finish before S1 has done
+all of its work. If $T'_\text{S1}$ is the time S1 spends working in a pipeline run (computing
+and checksums), then
+\begin{equation}
+  T_\text{pipeline} \;\ge\; T'_\text{S1}.
+  \label{eq:s1}
+\end{equation}
+If S1 also works as fast in the pipeline as in the serial program ($T'_\text{S1} \approx
+T_\text{S1}$), this gives an upper bound for the speedup:
+\begin{equation}
+  \text{speedup} = \frac{T_\text{serial}}{T_\text{pipeline}}
+  \;\le\; \frac{T_\text{serial}}{T_\text{S1}}.
+  \label{eq:bound}
+\end{equation}
+This bound rests on three assumptions:
+\begin{enumerate}
+\item every stage has a core of its own, so the stages really run at the same time (the machines
+  used have more cores than there are stages);
+\item each stage does the same work in both programs (true here: same kernels, same number of
+  passes);
+\item each stage works at the same speed in both programs. This holds only approximately: cache
+  behaviour and clock speed differ slightly from run to run, so a single run can end up marginally
+  above the bound.
+\end{enumerate}
+It is also an ideal case: it ignores everything the pipeline adds (communication, checksums, and
+the roughly 1\,ms until the first strip reaches S3), so real runs lie below it.
+
+Inequality~\eqref{eq:s1} needs no assumptions about the serial program, and both sides are measured
+in the same run, so it can be checked directly. For image~4, Variant~2, with threads,
+S1 spent $37.46 + 0.05 = 37.51$\,s computing and checksumming (Table~\ref{tab:stages4}), and the
+pipeline took 37.51\,s: the pipeline finished as soon as S1 did.
+
+Table~\ref{tab:serial} shows the stage times measured in the serial program. For image~4 in
+Variant~1, for example, $T_\text{serial} = 37.63 + 1.32 + 1.54 = 40.49$\,s, so the bound is
+$40.49 / 37.63 = 1.076$. S1 averages nine input values for every output value, while S2 and S3
+only combine two, so S1 takes over 90\% of the time and the bound is only about $1.08\times$,
+however fast the stages communicate.
+\begin{table}[htbp]
+\centering
+\caption{Time spent in each stage by the serial program (seconds, all \cfgIterations{} passes),
+and the resulting speedup bound.}
+\label{tab:serial}
+\begin{tabular}{rrrrrrr}
+\toprule
+Image & Variant & $T_\text{S1}$ & $T_\text{S2}$ & $T_\text{S3}$ & $T_\text{serial}$ &
+Bound $T_\text{serial}/T_\text{S1}$ \\
+\midrule
+1 & 1 & 2.70 & 0.11 & 0.12 & 2.93 & 1.086 \\
+1 & 2 & 2.67 & 0.09 & 0.10 & 2.86 & 1.072 \\
+\addlinespace
+2 & 1 & 10.04 & 0.37 & 0.42 & 10.83 & 1.079 \\
+2 & 2 & 10.01 & 0.33 & 0.40 & 10.74 & 1.073 \\
+\addlinespace
+4 & 1 & 37.63 & 1.32 & 1.54 & 40.49 & 1.076 \\
+4 & 2 & 37.52 & 1.26 & 1.54 & 40.32 & 1.075 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Runtime and speedup}
+\begin{table}[htbp]
+\centering
+\caption{Runtime (seconds) and speedup over the serial version for the default $k=\cfgK$,
+$N=\cfgRing$. Serial = compute time; the others = pipeline time. Best per row in bold.}
+\label{tab:speedup}
+\fit{%
+\begin{tabular}{rrr rr rr rr}
+\toprule
+& & & \multicolumn{2}{c}{Threads} & \multicolumn{2}{c}{Pipes} & \multicolumn{2}{c}{Shared mem.} \\
+\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+Image & Variant & Serial & Time & Speedup & Time & Speedup & Time & Speedup \\
+\midrule
+1 & 1 & 2.93 & \textbf{2.99} & \textbf{0.980} & 3.05 & 0.959 & \textbf{2.99} & \textbf{0.980} \\
+1 & 2 & 2.86 & \textbf{2.66} & \textbf{1.077} & 2.68 & 1.068 & 2.68 & 1.066 \\
+\addlinespace
+2 & 1 & 10.83 & \textbf{11.28} & \textbf{0.960} & 11.62 & 0.932 & 11.44 & 0.946 \\
+2 & 2 & 10.74 & \textbf{9.98} & \textbf{1.077} & 10.06 & 1.067 & 10.01 & 1.072 \\
+\addlinespace
+4 & 1 & 40.49 & \textbf{42.66} & \textbf{0.949} & 43.85 & 0.923 & 42.92 & 0.943 \\
+4 & 2 & 40.32 & \textbf{37.51} & \textbf{1.075} & 37.86 & 1.065 & 37.96 & 1.062 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 1, horizontal sep=1.5cm},
+  width=0.5\linewidth, height=6cm,
+  ybar, /pgf/bar width=5pt,
+  symbolic x coords={1,2,4}, xtick=data, enlarge x limits=0.25,
+  xlabel={Image}, ymin=0, ymax=1.2, ytick={0,0.2,...,1.2},
+  ymajorgrids, extra y ticks={1}, extra y tick labels={},
+  extra y tick style={grid=major, major grid style={black, dashed}},
+  tick label style={font=\scriptsize}, label style={font=\small},
+  title style={font=\small},
+  legend columns=4, legend style={font=\small, /tikz/every even column/.append style={column sep=6pt}}
+]
+\nextgroupplot[title={Variant 1}, ylabel={Speedup}, legend to name=legSpeedup]
+\addplot[fill=red!60, /pgf/bar shift=-6pt] table[x=image, y=part2_1] {\speedupVOne};
+\addplot[fill=blue!60, /pgf/bar shift=0pt] table[x=image, y=part2_2] {\speedupVOne};
+\addplot[fill=green!50!black!60, /pgf/bar shift=6pt] table[x=image, y=part2_3] {\speedupVOne};
+\addplot[only marks, mark=-, mark size=10pt, very thick, black, /pgf/bar shift=0pt,
+         legend image code/.code={\draw[very thick] (0cm,0cm) -- (0.4cm,0cm);}]
+  table[x=image, y=bound] {\speedupVOne};
+\legend{Threads, Pipes, Shared mem., Bound}
+\nextgroupplot[title={Variant 2}]
+\addplot[fill=red!60, /pgf/bar shift=-6pt] table[x=image, y=part2_1] {\speedupVTwo};
+\addplot[fill=blue!60, /pgf/bar shift=0pt] table[x=image, y=part2_2] {\speedupVTwo};
+\addplot[fill=green!50!black!60, /pgf/bar shift=6pt] table[x=image, y=part2_3] {\speedupVTwo};
+\addplot[only marks, mark=-, mark size=10pt, very thick, black, /pgf/bar shift=0pt]
+  table[x=image, y=bound] {\speedupVTwo};
+\end{groupplot}
+\end{tikzpicture}\\[4pt]
+\ref{legSpeedup}
+\caption{Speedup over the serial version ($k=\cfgK$, $N=\cfgRing$). The dashed line marks
+speedup~1 (as fast as the serial program); the black marks show the bound
+$T_\text{serial}/T_\text{S1}$ for each image. Exact values are in Table~\ref{tab:speedup}.}
+\label{fig:speedup}
+\end{figure}
+
+\paragraph{Variant 2 reaches the bound.} For all three images, every transport reaches a speedup
+of $1.06$--$1.08\times$, within about 1\% of the bound (Figure~\ref{fig:speedup}). Three values (all
+with threads) lie slightly \emph{above} the bound, which is within the run-to-run variation. For image~4
+with threads, the pipeline takes 37.51\,s, while S1 alone needs 37.46\,s of computing in the same
+run. Almost all of S2's and S3's work is hidden behind S1.
+
+\paragraph{Variant 1 is slower than serial.} In Variant~1 all versions are 2--8\% \emph{slower}
+than the serial program. The cause is verification on the bottleneck stage. In Variant~1, S1
+computes a checksum for every strip of every iteration, which the serial program does not do.
+For image~4 with threads, S1 spends 37.77\,s computing and 4.87\,s computing checksums
+(Table~\ref{tab:stages4}). Together that is 42.64\,s, almost exactly the pipeline time of
+42.66\,s. S2 and S3 also verify every strip, but they have spare time and that cost is hidden. In
+Variant~2 only one pass in \cfgPasses{} is sent, so S1's checksum time drops to 0.05\,s. Without
+checksums, Variant~1 would be expected to reach about the same speedup as Variant~2.
+
+\paragraph{Comparing the transports.} Threads are the fastest in every row (tied with shared
+memory for image~1, Variant~1). The differences are small (at most 3\%), because S1, not
+communication, limits the pipeline. In Variant~1, shared memory comes second and pipes last:
+every strip is copied into and out of the kernel, and S1 waits for the pipe (\emph{wait out}
+0.88\,s for image~4, against 0.01\,s or less with the rings). In Variant~2, pipes and shared
+memory are within 0.5\% of each other and swap places between images.
+
+\subsection{Stage breakdown}
+\label{sec:stages}
+Each stage measures where its time goes (seconds):
+\begin{itemize}
+\item \emph{busy}: time in its kernel;
+\item \emph{verify}: time computing checksums (sealing outgoing strips and checking incoming ones);
+\item \emph{wait in}: time waiting for input (for pipes, including the copy);
+\item \emph{wait out}: time waiting for space in the output channel (for pipes, including the copy);
+\item \emph{first in}: time from the start until the first strip arrived (ms).
+\end{itemize}
+\begin{table}[htbp]
+\centering
+\caption{Stage breakdown for image 4 ($k=\cfgK$, $N=\cfgRing$). Images 1 and 2 are in
+Appendix~\ref{app:stages}.}
+\label{tab:stages4}
+\begin{tabular}{llrrrrrr}
+\toprule
+Variant & Program & Stage & Busy & Verify & Wait in & Wait out & First in \\
+\midrule
+1 & Threads & S1 & 37.77 & 4.87 & 0.00 & 0.01 & -- \\
+ &  & S2 & 1.31 & 9.74 & 31.57 & 0.01 & 1.34 \\
+ &  & S3 & 1.61 & 4.87 & 36.16 & 0.00 & 1.47 \\
+\addlinespace
+1 & Pipes & S1 & 38.08 & 4.88 & 0.00 & 0.88 & -- \\
+ &  & S2 & 1.56 & 11.80 & 29.53 & 0.90 & 1.07 \\
+ &  & S3 & 2.30 & 7.62 & 33.82 & 0.00 & 1.42 \\
+\addlinespace
+1 & Shared mem. & S1 & 37.84 & 4.88 & 0.00 & 0.00 & -- \\
+ &  & S2 & 1.91 & 14.45 & 25.82 & 0.04 & 1.10 \\
+ &  & S3 & 2.17 & 7.28 & 33.37 & 0.00 & 1.31 \\
+\addlinespace
+2 & Threads & S1 & 37.46 & 0.05 & 0.00 & 0.00 & -- \\
+ &  & S2 & 1.27 & 0.10 & 32.54 & 0.00 & 0.72 \\
+ &  & S3 & 1.52 & 0.05 & 32.36 & 0.00 & 0.87 \\
+\addlinespace
+2 & Pipes & S1 & 37.80 & 0.05 & 0.00 & 0.01 & -- \\
+ &  & S2 & 1.28 & 0.11 & 32.83 & 0.01 & 1.05 \\
+ &  & S3 & 1.75 & 0.07 & 32.47 & 0.00 & 1.26 \\
+\addlinespace
+2 & Shared mem. & S1 & 37.89 & 0.05 & 0.00 & 0.00 & -- \\
+ &  & S2 & 1.36 & 0.13 & 32.82 & 0.00 & 1.04 \\
+ &  & S3 & 1.71 & 0.08 & 32.61 & 0.00 & 1.34 \\
+\bottomrule
+\end{tabular}
+\end{table}
+The breakdown confirms that S1 is the bottleneck. S1 hardly ever waits: \emph{wait in} is
+always zero because it reads the image directly, and \emph{wait out} stays small (at most 0.88\,s,
+with pipes) because the downstream stages keep up. S2 and S3 spend most of the run waiting for
+input. The pipeline fills quickly: S3 receives its first strip after 0.9--1.5\,ms, out of a run
+of about 40\,s. In Variant~1, S2 has the highest verify time, because it both checks every incoming strip
+and seals every outgoing one.
+
+\subsection{Effect of the strip height \texorpdfstring{$k$}{k}}
+Pipeline time in seconds for $k=1,2,4,\dots,128$ and $N=\cfgRing$ (T = threads, P = pipes,
+S = shared memory). The lowest time in each column is in bold.
+
+\begin{table}[htbp]
+\centering
+\caption{Variant 1: pipeline time (seconds) against the strip height $k$.}
+\label{tab:k-v1}
+\begin{tabular}{r rrr rrr rrr}
+\toprule
+& \multicolumn{3}{c}{Image 1} & \multicolumn{3}{c}{Image 2} & \multicolumn{3}{c}{Image 4} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}
+$k$ & T & P & S & T & P & S & T & P & S \\
+\midrule
+1 & 3.05 & 3.27 & 3.31 & 11.34 & 11.93 & 11.81 & 42.77 & 43.70 & 43.95 \\
+2 & 3.03 & 3.22 & 3.41 & 11.30 & \textbf{11.55} & 11.72 & \textbf{42.55} & 43.62 & 43.40 \\
+4 & \textbf{2.97} & 3.07 & 3.10 & 11.32 & 11.60 & 11.45 & 42.60 & \textbf{43.28} & 43.17 \\
+8 & 2.98 & \textbf{3.05} & 2.99 & 11.29 & 11.57 & 11.47 & 42.61 & 43.47 & 43.01 \\
+16 & 2.99 & \textbf{3.05} & 3.08 & 11.28 & 11.62 & 11.40 & \textbf{42.55} & 43.77 & 42.87 \\
+32 & 3.01 & 3.13 & 2.96 & \textbf{11.23} & 16.34 & 11.37 & 42.61 & 57.67 & \textbf{42.66} \\
+64 & 2.99 & 4.32 & 2.98 & 11.25 & 15.39 & 11.39 & 42.69 & 60.43 & 42.77 \\
+128 & 2.98 & 5.45 & \textbf{2.95} & 11.30 & 13.73 & \textbf{11.31} & 42.59 & 56.17 & 42.78 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Variant 2: pipeline time (seconds) against the strip height $k$.}
+\label{tab:k-v2}
+\begin{tabular}{r rrr rrr rrr}
+\toprule
+& \multicolumn{3}{c}{Image 1} & \multicolumn{3}{c}{Image 2} & \multicolumn{3}{c}{Image 4} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}
+$k$ & T & P & S & T & P & S & T & P & S \\
+\midrule
+1 & 2.62 & 2.66 & 2.72 & 9.98 & 10.09 & 10.08 & 37.85 & \textbf{37.78} & 37.78 \\
+2 & 2.67 & 2.65 & 2.65 & 9.96 & 10.10 & 10.05 & \textbf{37.59} & 37.97 & \textbf{37.72} \\
+4 & 2.64 & 2.65 & 2.66 & 10.01 & \textbf{10.03} & \textbf{9.99} & 37.70 & 37.84 & 37.92 \\
+8 & 2.63 & \textbf{2.64} & 2.70 & \textbf{9.93} & \textbf{10.03} & \textbf{9.99} & 37.66 & 37.94 & 37.80 \\
+16 & \textbf{2.61} & 2.65 & 2.68 & 9.96 & 10.04 & 10.07 & 37.64 & 37.96 & 37.91 \\
+32 & 2.64 & \textbf{2.64} & \textbf{2.63} & 10.00 & 10.11 & 10.05 & 37.63 & 37.90 & 37.75 \\
+64 & 2.65 & 2.76 & 2.68 & 10.01 & \textbf{10.03} & 10.03 & 37.77 & 37.84 & 37.74 \\
+128 & 2.64 & 2.71 & 2.65 & 9.95 & 10.06 & 10.02 & 37.75 & 37.87 & 37.83 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[p]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 3, horizontal sep=1.6cm, vertical sep=1.4cm,
+               xlabels at=edge bottom, ylabels at=edge left},
+  sweep plot, cycle list name=programs,
+  xtick={1,2,4,8,16,32,64,128}, xlabel={$k$ (rows per strip)},
+  ylabel={Relative to threads, $k=\cfgK$}, ymin=0.9, ymax=1.9,
+  extra y ticks={1}, extra y tick labels={},
+  extra y tick style={grid=major, major grid style={black, dashed}},
+  legend columns=3, legend style={font=\small, /tikz/every even column/.append style={column sep=6pt}}
+]
+% All times in a panel divided by the threads time at k = 8 (values from the k tables).
+\nextgroupplot[title={Image 1, Variant 1}, legend to name=legSweepB]
+\addplot table[x=k, y expr=\thisrow{part2_1}/2.98] {\sweepBimgOneVOne};
+\addplot table[x=k, y expr=\thisrow{part2_2}/2.98] {\sweepBimgOneVOne};
+\addplot table[x=k, y expr=\thisrow{part2_3}/2.98] {\sweepBimgOneVOne};
+\legend{Threads, Pipes, Shared mem.}
+\nextgroupplot[title={Image 1, Variant 2}]
+\addplot table[x=k, y expr=\thisrow{part2_1}/2.63] {\sweepBimgOneVTwo};
+\addplot table[x=k, y expr=\thisrow{part2_2}/2.63] {\sweepBimgOneVTwo};
+\addplot table[x=k, y expr=\thisrow{part2_3}/2.63] {\sweepBimgOneVTwo};
+\nextgroupplot[title={Image 2, Variant 1}]
+\addplot table[x=k, y expr=\thisrow{part2_1}/11.29] {\sweepBimgTwoVOne};
+\addplot table[x=k, y expr=\thisrow{part2_2}/11.29] {\sweepBimgTwoVOne};
+\addplot table[x=k, y expr=\thisrow{part2_3}/11.29] {\sweepBimgTwoVOne};
+\nextgroupplot[title={Image 2, Variant 2}]
+\addplot table[x=k, y expr=\thisrow{part2_1}/9.93] {\sweepBimgTwoVTwo};
+\addplot table[x=k, y expr=\thisrow{part2_2}/9.93] {\sweepBimgTwoVTwo};
+\addplot table[x=k, y expr=\thisrow{part2_3}/9.93] {\sweepBimgTwoVTwo};
+\nextgroupplot[title={Image 4, Variant 1}]
+\addplot table[x=k, y expr=\thisrow{part2_1}/42.61] {\sweepBimgFourVOne};
+\addplot table[x=k, y expr=\thisrow{part2_2}/42.61] {\sweepBimgFourVOne};
+\addplot table[x=k, y expr=\thisrow{part2_3}/42.61] {\sweepBimgFourVOne};
+\nextgroupplot[title={Image 4, Variant 2}]
+\addplot table[x=k, y expr=\thisrow{part2_1}/37.66] {\sweepBimgFourVTwo};
+\addplot table[x=k, y expr=\thisrow{part2_2}/37.66] {\sweepBimgFourVTwo};
+\addplot table[x=k, y expr=\thisrow{part2_3}/37.66] {\sweepBimgFourVTwo};
+\end{groupplot}
+\end{tikzpicture}\\[6pt]
+\ref{legSweepB}
+\caption{Effect of the strip height $k$ ($N=\cfgRing$). In each panel, all pipeline times are
+divided by the time of the threads version at the default $k=\cfgK$ (dashed line), so the shape of
+a line shows the effect of $k$ and the distance between lines shows the difference between the
+programs. All panels use the same scale. In Variant~2 (right) only \cfgResults{} images pass
+through the pipeline, so $k$ has no visible effect and all lines stay at about 1. Absolute times
+are in Tables~\ref{tab:k-v1} and~\ref{tab:k-v2}.}
+\label{fig:k}
+\end{figure}
+
+\paragraph{Threads and shared memory.} For the threads version, the time for images 2 and 4
+changes by less than 1\% across all values of $k$, and for the short runs of image~1 by up to
+2.7\% (2.97--3.05\,s in Variant~1), without a trend in $k$. This is within the run-to-run
+variation. Shared memory is a few percent slower at the smallest strips: image~4 takes
+43.95\,s at $k=1$ against 42.66\,s at $k=32$, because every strip costs two semaphore operations
+on each side, and $k=1$ has 32 times as many strips as $k=32$. Above $k\approx16$ shared memory
+matches threads.
+
+\paragraph{Pipes and the pipe buffer.} In Variant~1, the pipes version slows down sharply
+compared with $k=8$: by up to 39\% for image~4 (43.5\,s at $k=8$, 60.4\,s at $k=64$), 41\% for
+image~2 and 79\% for image~1 (3.05\,s at $k=8$, 5.45\,s at $k=128$). It does so exactly when a strip
+becomes larger than the default Linux pipe capacity of 65{,}536 bytes:
+\begin{center}
+\begin{tabular}{rrrrr}
+\toprule
+Image & Bytes per row & Largest tested $k$ that fits & Smallest that does not & Time (s) \\
+\midrule
+1 & 1{,}350 & 32 (43{,}200 B) & 64 (86{,}400 B) & 3.13 $\to$ 4.32 \\
+2 & 2{,}358 & 16 (37{,}728 B) & 32 (75{,}456 B) & 11.62 $\to$ 16.34 \\
+4 & 3{,}840 & 16 (61{,}440 B) & 32 (122{,}880 B) & 43.77 $\to$ 57.67 \\
+\bottomrule
+\end{tabular}
+\end{center}
+While a strip fits into the pipe, the writer copies it in one go and continues computing. A
+larger strip can only be written once the reader has started draining the pipe, so producer and
+consumer have to take turns within every strip. For image~2, S1's \emph{wait out} rises from
+0.24\,s at $k=16$ to 2.32\,s at $k=32$. S1's \emph{busy} time also rises, from 10.08\,s to
+12.49\,s, although it does the same computation. A plausible cause is that S1 now blocks and is
+woken up thousands of times, which costs it cache contents and possibly a fast CPU core; we did
+not investigate this further. Variant~2 sends only \cfgResults{} images, so this effect is not
+visible there.
+
+\paragraph{Variant 2.} In Variant~2 the strip height makes no systematic difference for any
+transport. For images 2 and 4 all values lie within 1\%; the short runs of image~1 vary more
+(up to 4.5\%, pipes: 2.64--2.76\,s) but without a trend in $k$. The best values in
+Table~\ref{tab:k-v2} are therefore mostly noise.
+
+\subsection{Effect of the ring capacity \texorpdfstring{$N$}{N}}
+Pipeline time in seconds for $N=1,2,4,\dots,64$ and $k=\cfgK$ (T = threads, S = shared memory;
+pipes have no ring). The lowest time in each column is in bold.
+
+\begin{table}[htbp]
+\centering
+\caption{Variant 1: pipeline time (seconds) against the ring capacity $N$.}
+\label{tab:N-v1}
+\begin{tabular}{r rr rr rr}
+\toprule
+& \multicolumn{2}{c}{Image 1} & \multicolumn{2}{c}{Image 2} & \multicolumn{2}{c}{Image 4} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+$N$ & T & S & T & S & T & S \\
+\midrule
+1 & 3.78 & 12.00 & 14.30 & 42.95 & 54.39 & 129.86 \\
+2 & 2.99 & 3.09 & 11.39 & 13.51 & 42.36 & 43.35 \\
+4 & \textbf{2.94} & 3.04 & \textbf{11.19} & 11.46 & 42.37 & \textbf{42.81} \\
+8 & 2.97 & 3.04 & 11.29 & \textbf{11.36} & \textbf{42.33} & 43.02 \\
+16 & 2.98 & \textbf{3.00} & 11.24 & 11.39 & 42.69 & 43.00 \\
+32 & 2.98 & 3.02 & 11.28 & 11.41 & 42.61 & 43.06 \\
+64 & 2.98 & \textbf{3.00} & 11.28 & 11.45 & 42.50 & 42.95 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Variant 2: pipeline time (seconds) against the ring capacity $N$.}
+\label{tab:N-v2}
+\begin{tabular}{r rr rr rr}
+\toprule
+& \multicolumn{2}{c}{Image 1} & \multicolumn{2}{c}{Image 2} & \multicolumn{2}{c}{Image 4} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+$N$ & T & S & T & S & T & S \\
+\midrule
+1 & 2.65 & 3.01 & 10.02 & 10.28 & 37.79 & 38.92 \\
+2 & 2.64 & 2.71 & 10.05 & 10.03 & \textbf{37.61} & 37.93 \\
+4 & 2.65 & 2.69 & 10.00 & 10.05 & 37.93 & 37.89 \\
+8 & \textbf{2.62} & \textbf{2.64} & 10.03 & \textbf{10.00} & 37.62 & 38.06 \\
+16 & 2.66 & 2.70 & 10.00 & 10.01 & 37.95 & 37.99 \\
+32 & \textbf{2.62} & 2.65 & 10.01 & 10.09 & 37.83 & 37.79 \\
+64 & 2.66 & 2.65 & \textbf{9.98} & 10.01 & 37.74 & \textbf{37.73} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[p]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 3, horizontal sep=1.6cm, vertical sep=1.4cm,
+               xlabels at=edge bottom, ylabels at=edge left},
+  sweep plot, cycle list name=rings,
+  xtick={1,2,4,8,16,32,64}, xlabel={$N$ (ring capacity, strips)},
+  ylabel={Relative to threads, $N=\cfgRing$}, ymin=0.8, ymax=4.2, ytick={1,2,3,4},
+  extra y ticks={1}, extra y tick labels={},
+  extra y tick style={grid=major, major grid style={black, dashed}},
+% All times in a panel divided by the threads time at N = 16 (values from the N tables).
+]
+% Each program's time divided by its own time at N = 16 (values from the N tables).
+\nextgroupplot[title={Image 1, Variant 1}, legend to name=legSweepC]
+\addplot table[x=N, y expr=\thisrow{part2_1}/2.98] {\sweepCimgOneVOne};
+\addplot table[x=N, y expr=\thisrow{part2_3}/2.98] {\sweepCimgOneVOne};
+\legend{Threads, Shared mem.}
+\nextgroupplot[title={Image 1, Variant 2}]
+\addplot table[x=N, y expr=\thisrow{part2_1}/2.66] {\sweepCimgOneVTwo};
+\addplot table[x=N, y expr=\thisrow{part2_3}/2.66] {\sweepCimgOneVTwo};
+\nextgroupplot[title={Image 2, Variant 1}]
+\addplot table[x=N, y expr=\thisrow{part2_1}/11.24] {\sweepCimgTwoVOne};
+\addplot table[x=N, y expr=\thisrow{part2_3}/11.24] {\sweepCimgTwoVOne};
+\nextgroupplot[title={Image 2, Variant 2}]
+\addplot table[x=N, y expr=\thisrow{part2_1}/10.00] {\sweepCimgTwoVTwo};
+\addplot table[x=N, y expr=\thisrow{part2_3}/10.00] {\sweepCimgTwoVTwo};
+\nextgroupplot[title={Image 4, Variant 1}]
+\addplot table[x=N, y expr=\thisrow{part2_1}/42.69] {\sweepCimgFourVOne};
+\addplot table[x=N, y expr=\thisrow{part2_3}/42.69] {\sweepCimgFourVOne};
+\nextgroupplot[title={Image 4, Variant 2}]
+\addplot table[x=N, y expr=\thisrow{part2_1}/37.95] {\sweepCimgFourVTwo};
+\addplot table[x=N, y expr=\thisrow{part2_3}/37.95] {\sweepCimgFourVTwo};
+\end{groupplot}
+\end{tikzpicture}\\[6pt]
+\ref{legSweepC}
+\caption{Effect of the ring capacity $N$ ($k=\cfgK$). In each panel, all pipeline times are
+divided by the time of the threads version at the default $N=\cfgRing$ (dashed line), so the shape
+of a line shows the effect of $N$ and the distance between lines shows the difference between
+the programs. All panels use the same scale. In Variant~2 (right) only \cfgResults{} images pass
+through the pipeline, so $N$ has almost no effect (at most 11\% at $N=1$). Absolute times are in
+Tables~\ref{tab:N-v1} and~\ref{tab:N-v2}.}
+\label{fig:N}
+\end{figure}
+
+\paragraph{$N \ge 2$.} For threads, the ring capacity has no measurable effect from two slots
+upwards, and for shared memory from four slots upwards. S1 is the bottleneck, so the rings are
+almost always close to empty and extra slots are rarely used. The one exception is shared memory
+with two slots in Variant~1: image~2 takes 13.51\,s against 11.36--11.46\,s for $N\ge4$ (image~1:
+3.09 against 3.00--3.04\,s).
+
+\paragraph{$N = 1$.} With a single slot, S1 cannot start the next strip until S2 has released the
+previous one, so the stages run in lockstep instead of overlapping. Threads lose up to 28\%
+(image~4: 54.4\,s against 42.4\,s at $N=2$). Shared memory is three times slower (129.9\,s
+against 43.4\,s). With shared memory, S1's busy time for image~2 more than doubles, from 11.6\,s at
+$N=2$ to 22.2\,s at $N=1$, even though the computation is the same. The difference between the
+two transports is in how they wait: a thread spins and yields and stays on its core, while a
+process blocked on a semaphore sleeps and must be woken by the kernel for every strip. We suspect
+these thousands of sleep/wake-up cycles cost S1 its cache contents and CPU frequency, but we did
+not verify this. In Variant~2 the effect is much smaller (at most 3\% for images 2 and 4, 11\%
+for the small image~1), because only \cfgResults{} images pass through the ring.
+
+% =====================================================================
+\section{Results: Part III (two machines)}
+Machine~A is a laptop running Linux under WSL2 on Windows; machine~B is a laptop running Linux
+natively. Both were connected to the same Wi-Fi hotspot. All runs use $k=\cfgK$ and $N=\cfgRing$
+and the same three images, and all times are end-to-end times measured on A.
+
+Both partitions send the same amount of data over the network: one image-sized stream of strips
+per iteration (Variant~1) or per result (Variant~2). They differ only in where the stages run:
+\begin{itemize}
+\item \textbf{Partition 1:} A runs S1 and S2 (two threads with a ring between them), B runs S3.
+  The S2$\to$S3 link crosses the network.
+\item \textbf{Partition 2:} A runs S1, B runs S2 and S3. The S1$\to$S2 link crosses the network.
+\end{itemize}
+
+\paragraph{Correctness.} In all 30 runs, both ends of the network link reported identical strip
+counts, byte counts and stream hashes, so every strip arrived intact and in order. For image~4 the
+stream hashes are also identical to those of the Part~II runs on a single machine
+(Table~\ref{tab:links}): the same strips were sent, in the same order.
+
+\begin{table}[htbp]
+\centering
+\caption{End-to-end time on machine A (seconds) for both partitions, and speedup over the serial
+program run on machine A. Variant~1: one run each. Variant~2 and serial: fastest of three or more
+runs, all in the same session. Best per row in bold.}
+\label{tab:part3}
+\begin{tabular}{rr r rr rr}
+\toprule
+& & & \multicolumn{2}{c}{Partition 1} & \multicolumn{2}{c}{Partition 2} \\
+\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+Image & Variant & Serial (A) & Time & Speedup & Time & Speedup \\
+\midrule
+1 & 1 & 2.48 & \textbf{47.52} & \textbf{0.052} & 49.71 & 0.050 \\
+1 & 2 & 2.48 & \textbf{2.31} & \textbf{1.077} & 2.34 & 1.062 \\
+\addlinespace
+2 & 1 & 9.42 & 247.62 & 0.038 & \textbf{205.38} & \textbf{0.046} \\
+2 & 2 & 9.42 & \textbf{9.08} & \textbf{1.038} & 9.23 & 1.021 \\
+\addlinespace
+4 & 1 & 36.29 & 885.02 & 0.041 & \textbf{750.12} & \textbf{0.048} \\
+4 & 2 & 36.29 & \textbf{37.78} & \textbf{0.961} & 37.87 & 0.958 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Measuring speedup on machine A.} Speedups are measured against the serial program on
+machine A, because A runs S1, the stage that sets the pace. A runs Linux under Windows (WSL2),
+where Windows decides the clock speed and which core a program runs on, and A's speed turned out
+to differ between sessions: in one earlier session, S1 took 4.1\,s for image~1, against 2.3\,s in
+the session used here. Comparing a serial run from one session with a pipeline run from another
+would therefore give meaningless speedups. For Variant~2, the serial program and both partitions
+were therefore run alternately in the same session, three rounds each, and the fastest run of
+each is used. Interference can only make a run slower, so the fastest run is the best estimate of
+the machine's actual speed. Within this session S1's compute time varied far less than between
+sessions (2.25--2.43\,s for image~1, 32.8--35.3\,s for image~4, over serial and pipeline runs),
+although for image~4 it was somewhat higher in the pipeline runs (33.4--35.3\,s) than in the
+serial runs (32.8--34.0\,s). Variant~1 runs the same
+computation as Variant~2 (on machine~B the serial times of the two variants differ by less than
+3\%), so the same serial times are used for it. Its speedups are so far below 1 that the
+difference does not matter.
+
+\paragraph{Speedup.} On machine A, S1 takes about 90\% of the serial time, so the bound
+$T_\text{serial}/T_\text{S1}$ is about $1.11\times$ (image~4: $36.29/32.78 = 1.107$). In
+Variant~1 every configuration is 19 to 26 times \emph{slower} than serial (speedups
+0.038--0.052), because of the network (see below). In Variant~2, images 1 and 2 gain from the
+pipeline (up to $1.077\times$ for image~1, close to its bound of $1.106\times$), but image~4 is
+about 4\% slower than serial.
+
+\paragraph{Variant 1 is limited by the network.} In Variant~1 every iteration sends a whole image
+across the network, 3.5\,GB in total for image~4. Dividing the bytes sent by the run time gives the
+rate the link sustained (Table~\ref{tab:part3-rate}): 3.7--5.1\,MB/s, or about 30--40\,Mbit/s,
+which is typical for a shared Wi-Fi hotspot. The stage statistics show where the time goes. For
+image~4 in partition~1, S1 computed for 34.8\,s and spent 846\,s, 96\% of the run, waiting for
+space in its output channel: the pipeline ran at the speed of the network, not of S1. The same
+run on one machine took 42.7\,s (Table~\ref{tab:speedup}), about 20 times faster. In
+partition~2 the picture is the same: S1 waited for 707\,s of the 750\,s run (94\%). Since S1
+spends almost the whole run waiting in both partitions, the difference between them (885 against
+750\,s for image~4) most likely reflects how fast the shared hotspot carried data during each run,
+rather than where S2 runs.
+
+\begin{table}[htbp]
+\centering
+\caption{Variant 1: data sent over the network (headers and pixels) and the rate achieved
+(bytes divided by the end-to-end time; MB = $10^6$ bytes).}
+\label{tab:part3-rate}
+\begin{tabular}{rr rr rr}
+\toprule
+& & \multicolumn{2}{c}{Partition 1} & \multicolumn{2}{c}{Partition 2} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}
+Image & Data (MB) & Time (s) & Rate (MB/s) & Time (s) & Rate (MB/s) \\
+\midrule
+1 & 243.6 & 47.52 & 5.13 & 49.71 & 4.90 \\
+2 & 927.9 & 247.62 & 3.75 & 205.38 & 4.52 \\
+4 & 3{,}497.1 & 885.02 & 3.95 & 750.12 & 4.66 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Variant 2 hides the network for small results.} Variant~2 sends only \cfgResults{}
+results, and between two results S1 computes \cfgPasses{} passes locally, so there is plenty of
+time to transfer a result in the background. What matters is whether S1 can hand over a whole
+result without waiting: the strips of pass~0 are produced much faster than the network can carry
+them, and they first have to fit into the buffers between S1 and the network (the socket buffers,
+and in partition~1 also the ring between S1 and S2). One result is 0.24\,MB for image~1 and
+0.93\,MB for image~2. These fit, and S1 waited at most 0.5\,s in total over a run. For image~4 a
+result is 3.5\,MB. It does not fit, so S1 is blocked on every result until enough has been sent;
+this added 2.6--5.7\,s of waiting per run. The pipeline can save at most 3.5\,s
+($T_\text{serial}-T_\text{S1}$), and in addition S1 computed somewhat more slowly in the pipeline
+runs than in the serial runs (see above). In the fastest partition~1 run, for example, S1
+computed for 34.95\,s and waited 2.78\,s, for 37.78\,s in total against 36.29\,s serial. Both partitions behave the same: over three rounds, the fastest
+times differ by less than 2\% for every image, and S1's waiting varied as much within each
+partition as between them.
+
+% =====================================================================
+\section{Conclusion}
+All versions produce output identical to the serial reference, and in every run both ends of
+every link agreed on the number, content and order of the strips. The achievable speedup of
+this three-stage pipeline is limited to about $1.08\times$, because S1 accounts for about 93\% of
+the work. In Variant~2 all three transports reach this bound to within about 1\%. In Variant~1
+the cost of verifying every strip falls on S1, the bottleneck stage, and makes the pipelined
+versions 2--8\% slower than the serial program. Threads with a lock-free ring are the fastest
+transport; in Variant~1 shared memory comes second and pipes last. Two parameters matter only at
+their extremes: pipes slow down by 39--79\% once a strip no longer fits into the 64\,KiB pipe
+buffer, and a ring of a single slot forces the stages into lockstep, which costs a factor of three
+to four with semaphores. A pipeline that splits S1 itself across several workers (for example
+by rows) would be needed for a larger speedup.
+
+Across two machines, the data again arrived exactly as sent in every run. Variant~1 sends every
+iteration over the network and is limited by it: over a Wi-Fi hotspot at about 4--5\,MB/s, the
+largest image took 750--885\,s, about 20 times longer than on one machine. Variant~2 sends
+100 times less data. For the two smaller images it still gains up to $1.08\times$ over the serial
+program, but for the largest image one result no longer fits into the buffers on the way, S1 has
+to wait for the network, and the pipeline ends up about 4\% slower than serial. Where the network
+link lies (partition 1 or 2) made no measurable difference.
+
+% =====================================================================
+\clearpage
+\appendix
+\section{Stage breakdown for images 1 and 2}
+\label{app:stages}
+
+\begin{table}[htbp]
+\centering
+\caption{Stage breakdown for image 1 ($k=\cfgK$, $N=\cfgRing$), seconds; first in in ms.}
+\label{tab:stages1}
+\begin{tabular}{llrrrrrr}
+\toprule
+Variant & Program & Stage & Busy & Verify & Wait in & Wait out & First in \\
+\midrule
+1 & Threads & S1 & 2.64 & 0.34 & 0.00 & 0.00 & -- \\
+ &  & S2 & 0.09 & 0.69 & 2.21 & 0.00 & 0.60 \\
+ &  & S3 & 0.11 & 0.34 & 2.53 & 0.00 & 0.65 \\
+\addlinespace
+1 & Pipes & S1 & 2.65 & 0.34 & 0.00 & 0.06 & -- \\
+ &  & S2 & 0.10 & 0.72 & 2.16 & 0.07 & 0.72 \\
+ &  & S3 & 0.16 & 0.50 & 2.39 & 0.00 & 0.92 \\
+\addlinespace
+1 & Shared mem. & S1 & 2.62 & 0.34 & 0.00 & 0.00 & -- \\
+ &  & S2 & 0.12 & 0.90 & 1.91 & 0.00 & 0.68 \\
+ &  & S3 & 0.15 & 0.49 & 2.34 & 0.00 & 0.84 \\
+\addlinespace
+2 & Threads & S1 & 2.65 & 0.00 & 0.00 & 0.00 & -- \\
+ &  & S2 & 0.09 & 0.01 & 2.31 & 0.00 & 0.45 \\
+ &  & S3 & 0.11 & 0.00 & 2.29 & 0.00 & 0.50 \\
+\addlinespace
+2 & Pipes & S1 & 2.67 & 0.00 & 0.00 & 0.00 & -- \\
+ &  & S2 & 0.09 & 0.01 & 2.32 & 0.00 & 0.60 \\
+ &  & S3 & 0.12 & 0.00 & 2.31 & 0.00 & 0.75 \\
+\addlinespace
+2 & Shared mem. & S1 & 2.68 & 0.00 & 0.00 & 0.00 & -- \\
+ &  & S2 & 0.09 & 0.01 & 2.33 & 0.00 & 0.68 \\
+ &  & S3 & 0.15 & 0.01 & 2.27 & 0.00 & 0.79 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Stage breakdown for image 2 ($k=\cfgK$, $N=\cfgRing$), seconds; first in in ms.}
+\label{tab:stages2}
+\begin{tabular}{llrrrrrr}
+\toprule
+Variant & Program & Stage & Busy & Verify & Wait in & Wait out & First in \\
+\midrule
+1 & Threads & S1 & 9.98 & 1.29 & 0.00 & 0.00 & -- \\
+ &  & S2 & 0.34 & 2.61 & 8.32 & 0.00 & 0.59 \\
+ &  & S3 & 0.42 & 1.30 & 9.55 & 0.00 & 0.72 \\
+\addlinespace
+1 & Pipes & S1 & 10.03 & 1.31 & 0.00 & 0.28 & -- \\
+ &  & S2 & 0.42 & 3.19 & 7.73 & 0.26 & 1.01 \\
+ &  & S3 & 0.58 & 1.86 & 9.16 & 0.00 & 1.24 \\
+\addlinespace
+1 & Shared mem. & S1 & 10.05 & 1.30 & 0.00 & 0.00 & -- \\
+ &  & S2 & 0.42 & 3.18 & 7.66 & 0.01 & 1.20 \\
+ &  & S3 & 0.62 & 2.06 & 8.71 & 0.00 & 1.54 \\
+\addlinespace
+2 & Threads & S1 & 9.96 & 0.01 & 0.00 & 0.00 & -- \\
+ &  & S2 & 0.36 & 0.03 & 8.64 & 0.00 & 0.78 \\
+ &  & S3 & 0.43 & 0.01 & 8.59 & 0.00 & 0.86 \\
+\addlinespace
+2 & Pipes & S1 & 10.04 & 0.01 & 0.00 & 0.00 & -- \\
+ &  & S2 & 0.34 & 0.03 & 8.72 & 0.00 & 0.67 \\
+ &  & S3 & 0.48 & 0.02 & 8.63 & 0.00 & 0.92 \\
+\addlinespace
+2 & Shared mem. & S1 & 10.00 & 0.01 & 0.00 & 0.00 & -- \\
+ &  & S2 & 0.36 & 0.03 & 8.67 & 0.00 & 0.90 \\
+ &  & S3 & 0.42 & 0.01 & 8.63 & 0.00 & 1.09 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}

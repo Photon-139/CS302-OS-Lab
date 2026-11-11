@@ -22,7 +22,7 @@ NET_HDR = ./net_utils.hpp
 HOST ?= 127.0.0.1
 PORT ?= 12345
 
-.PHONY: part1 run-part1 part2_1_variant1 part2_1_variant2 part2_1_tsan part2_2_variant1 part2_2_variant2 part2_3_variant1 part2_3_variant2 \
+.PHONY: part1 run-part1 part2_1_variant1 part2_1_variant2 part2_1_tsan part2_2_variant1 part2_2_variant2 part2_3 part2_3_variant1 part2_3_variant2 \
         part3_1_variant1_A part3_1_variant1_B part3_1_variant2_A part3_1_variant2_B \
         part3_2_variant1_A part3_2_variant1_B part3_2_variant2_A part3_2_variant2_B clean-part1 clean
 
@@ -89,6 +89,9 @@ part2_3_variant1: ./part2_3.out
 
 part2_3_variant2: ./part2_3.out
 	./part2_3.out 2 ./images/$(INPUT).ppm ./part2/output_part2_3_variant2.ppm
+
+# The assignment lists this target without a variant: run both.
+part2_3: part2_3_variant1 part2_3_variant2
 
 # ---------------- Part III.1: A = S1 + S2 (threads), B = S3, over TCP ----------------
 # B takes k from A; B is given the variant too and rejects a run where A's variant differs.
