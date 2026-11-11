@@ -21,6 +21,7 @@
 #include "../image_operations.hpp"
 #include "../config.hpp"
 #include "../net_utils.hpp"
+#include "../stats.hpp"
 
 using unit = std::chrono::microseconds;
 
@@ -174,6 +175,16 @@ int main(int argc, char** argv){
         free_flat_image(image);
         return 1;
     }
+    // Same size is not enough: both machines must have read the same pixels (S2/S3 use B's copy).
+    const uint64_t image_hash = image_checksum(image);
+    if(params.image_hash_hi != (uint32_t)(image_hash >> 32) ||
+       params.image_hash_lo != (uint32_t)(image_hash & 0xffffffffu)){
+        std::cerr << "input images differ: A and B were started with different images of the same size"
+                  << std::endl;
+        close(socket_fd);
+        free_flat_image(image);
+        return 1;
+    }
     // Both machines must run the same variant (otherwise the output file name, taken from B's
     // variant, would not match the work A did).
     if(params.variant != (uint32_t)variant){
@@ -204,10 +215,15 @@ int main(int argc, char** argv){
     }
 
     // S3 runs in its own thread, like the stages in the other parts.
+    // Each stage runs through run_stage(), which prints the stage's statistics when it is done.
+    const char* stage_names[1] = {"S3"};
+    stage_launch launches[1];
     pthread_t threads[1];
     auto pipeline_start = std::chrono::steady_clock::now();
+    const uint64_t start_ns = now_ns();
     for(int i = 0; i < 1; ++i){
-        int err = pthread_create(&threads[i], NULL, funcs[i], (void*)(&context));
+        launches[i] = stage_launch{funcs[i], (void*)(&context), stage_names[i], start_ns};
+        int err = pthread_create(&threads[i], NULL, run_stage, (void*)(&launches[i]));
         if(err != 0){
             std::cerr << "Failed to create thread for S3: " << strerror(err) << std::endl;
             return 1;
@@ -221,6 +237,9 @@ int main(int argc, char** argv){
         }
     }
     auto pipeline_end = std::chrono::steady_clock::now();
+
+    // Link statistics of this machine's side of each link (all stage threads have finished).
+    print_link_stats("S2->S3", "recv", context.s2_to_s3.received(), true);
 
     // Output is on disk: let A stop its clock.
     send_done(socket_fd);

@@ -36,6 +36,8 @@ struct run_params {
     uint32_t iterations;   // config::ITERATIONS on A
     uint32_t passes;       // config::PASSES_PER_RESULT on A
     uint32_t ring_capacity; // N for whichever machine has the ring (A in III.1, B in III.2)
+    uint32_t image_hash_hi; // image_checksum() of A's input image (high and low 32 bits);
+    uint32_t image_hash_lo; // B compares it with the checksum of its own copy
 };
 
 // A: send the parameters (each field in network byte order).

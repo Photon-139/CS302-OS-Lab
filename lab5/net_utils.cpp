@@ -91,13 +91,14 @@ void set_nodelay(int fd)
 
 // ---- Run parameters ----
 
-static constexpr int RUN_PARAMS_WORDS = 8;
+static constexpr int RUN_PARAMS_WORDS = 10;
 
 void send_params(int fd, const run_params& p)
 {
     const uint32_t words[RUN_PARAMS_WORDS] = {
         htonl(p.magic), htonl(p.width), htonl(p.height), htonl(p.k),
         htonl(p.variant), htonl(p.iterations), htonl(p.passes), htonl(p.ring_capacity),
+        htonl(p.image_hash_hi), htonl(p.image_hash_lo),
     };
     writen(fd, words, sizeof(words));
 }
@@ -119,6 +120,8 @@ run_params recv_params(int fd)
     p.iterations = ntohl(words[5]);
     p.passes     = ntohl(words[6]);
     p.ring_capacity = ntohl(words[7]);
+    p.image_hash_hi = ntohl(words[8]);
+    p.image_hash_lo = ntohl(words[9]);
 
     if(p.magic != RUN_PARAMS_MAGIC){
         fprintf(stderr, "unexpected data from peer (bad magic %08x): is the other side this program?\n", p.magic);

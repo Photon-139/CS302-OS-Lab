@@ -1,4 +1,5 @@
 #include "strip.hpp"
+#include "stats.hpp"
 #include "libppm.hpp"
 #include <cstdio>
 #include <cstdlib>
@@ -30,6 +31,7 @@ uint64_t fnv1a(uint64_t starting_value, uint64_t value)
 
 uint64_t strip_checksum(const strip_hdr& hdr, const uint8_t* pixels, size_t n)
 {
+    scoped_timer timer(this_stage().verify_ns);   // stage statistics: sealing / checking cost
     // Fields are hashed individually (never the raw struct), so padding or the
     // checksum field itself can never influence the result.
     uint64_t h = FNV_OFFSET_BASIS;
@@ -84,4 +86,10 @@ void decode_header(const uint8_t in[WIRE_HDR_BYTES], strip_hdr& h)
     h.nrows     = ntohl(words[2]);
     h.flags     = ntohl(words[3]);
     h.checksum  = ((uint64_t)ntohl(words[4]) << 32) | ntohl(words[5]);
+}
+
+uint64_t image_checksum(const flat_image_t* image)
+{
+    return fnv1a_bytes(FNV_OFFSET_BASIS, image->image_pixels,
+                       (size_t)image->width * image->height * CHANNELS);
 }

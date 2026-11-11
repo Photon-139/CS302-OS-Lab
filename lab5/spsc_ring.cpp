@@ -4,7 +4,8 @@
 
 spsc_ring::spsc_ring(size_t capacity, int k, int width):
     capacity_(capacity), 
-    slot_bytes_(k*width*3),
+    slot_bytes_((size_t)k*width*3),
+    width_(width),
     headers_(new strip_hdr[capacity]),
     pixels_(new uint8_t[capacity*slot_bytes_])
 {
@@ -32,8 +33,11 @@ strip_view spsc_ring::acquire()
     // The consumer's counter: acquire, so that once we see the slot has been released,
     // all of the consumer's reads of that slot are finished before we overwrite it.
     unsigned spins = 0;
-    while (head - tail_.load(std::memory_order_acquire) == capacity_) {
-        backoff(spins);   // ring is full: wait for the consumer to release a slot
+    {
+        scoped_timer timer(this_stage().wait_out_ns);   // stage statistics: waiting for space
+        while (head - tail_.load(std::memory_order_acquire) == capacity_) {
+            backoff(spins);   // ring is full: wait for the consumer to release a slot
+        }
     }
 
     const size_t slot = head % capacity_;
@@ -44,6 +48,11 @@ void spsc_ring::publish()
 {
     // Own counter: only the producer writes head_, so relaxed is enough to read it.
     const uint64_t head = head_.load(std::memory_order_relaxed);
+
+    // Link statistics, then (only in fault-injection builds) break the strip on purpose.
+    const size_t slot = head % capacity_;
+    sent_.add(headers_[slot], (size_t)headers_[slot].nrows * width_ * 3, 0);
+    maybe_inject_fault(headers_[slot], pixels_ + slot * slot_bytes_);
 
     // Release: every write to the slot (pixels, header, checksum) is made visible
     // to the consumer before it can observe the new head_.
@@ -58,9 +67,13 @@ strip_view spsc_ring::receive()
     // The producer's counter: acquire, so that once we see the slot has been published,
     // all of the producer's writes to it (pixels, header, checksum) are visible to us.
     unsigned spins = 0;
-    while (head_.load(std::memory_order_acquire) == tail) {
-        backoff(spins);   // ring is empty: wait for the producer to publish a slot
+    {
+        scoped_timer timer(this_stage().wait_in_ns);    // stage statistics: waiting for data
+        while (head_.load(std::memory_order_acquire) == tail) {
+            backoff(spins);   // ring is empty: wait for the producer to publish a slot
+        }
     }
+    if (this_stage().first_in_ns == 0) this_stage().first_in_ns = now_ns();
 
     const size_t slot = tail % capacity_;
     return strip_view{ &headers_[slot], pixels_ + slot * slot_bytes_ };
@@ -70,6 +83,10 @@ void spsc_ring::release()
 {
     // Own counter: only the consumer writes tail_, so relaxed is enough to read it.
     const uint64_t tail = tail_.load(std::memory_order_relaxed);
+
+    // Link statistics: the stage releases a strip only after verify_strip() accepted it.
+    const size_t slot = tail % capacity_;
+    received_.add(headers_[slot], (size_t)headers_[slot].nrows * width_ * 3, 0);
 
     // Release: all our reads of the slot are complete before the producer can observe
     // the new tail_ and start overwriting the slot.

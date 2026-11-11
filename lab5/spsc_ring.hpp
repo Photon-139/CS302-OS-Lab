@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include "strip.hpp"
+#include "stats.hpp"
 
 
 constexpr int SPINS = 1024;
@@ -29,12 +30,21 @@ public:
     size_t capacity() const;
     size_t slot_bytes() const;
 
+    // Link statistics: sent() is filled by the producer, received() by the consumer.
+    // Read them only after both threads have finished.
+    const link_stats& sent() const     { return sent_; }
+    const link_stats& received() const { return received_; }
+
 private:
     size_t     capacity_;     // N
     size_t     slot_bytes_;   // k × width × 3
+    int        width_;        // image width, for the payload size of a strip
     strip_hdr* headers_;      // N headers
     uint8_t*   pixels_;       // N × slot_bytes_
 
     alignas(64) std::atomic<uint64_t> head_{0};   // slots published so far; written only by the producer
     alignas(64) std::atomic<uint64_t> tail_{0};   // slots released so far; written only by the consumer
+
+    alignas(64) link_stats sent_;       // written only by the producer
+    alignas(64) link_stats received_;   // written only by the consumer
 };

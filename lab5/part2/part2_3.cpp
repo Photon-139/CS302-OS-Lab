@@ -21,6 +21,7 @@
 #include "../shm_ring.hpp"
 #include "../image_operations.hpp"
 #include "../config.hpp"
+#include "../stats.hpp"
 
 using unit = std::chrono::microseconds;
 
@@ -418,7 +419,9 @@ int main(int argc, char** argv){
     // (includes S3's file write, which S3 also reports separately).
     pid_t pids[3];
     int started = 0;
+    const char* stage_names[3] = {"S1", "S2", "S3"};
     auto pipeline_start = std::chrono::steady_clock::now();
+    const uint64_t start_ns = now_ns();
 
     for(int i = 0; i<3; ++i){
         pid_t pid = fork();
@@ -429,6 +432,19 @@ int main(int argc, char** argv){
         if(pid==0){
             // ---- child: stage i (0 = S1, 1 = S2, 2 = S3) ----
             funcs[i](&ctx);
+
+            // This process's statistics: its stage, and its side of each link it uses.
+            print_stage_stats(stage_names[i], start_ns);
+            if(i==0){
+                print_link_stats("S1->S2", "send", ctx.s1_to_s2.sent(), false);
+            }
+            if(i==1){
+                print_link_stats("S1->S2", "recv", ctx.s1_to_s2.received(), false);
+                print_link_stats("S2->S3", "send", ctx.s2_to_s3.sent(),     false);
+            }
+            if(i==2){
+                print_link_stats("S2->S3", "recv", ctx.s2_to_s3.received(), false);
+            }
 
             // _exit, not exit/return: the child must never continue into the parent's code,
             // and must not run ctx's destructor (that would destroy the rings for everyone).

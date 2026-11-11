@@ -1,4 +1,7 @@
 #include "shm_ring.hpp"
+#include <cerrno>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <unistd.h>
 #include <sys/mman.h>
@@ -6,7 +9,8 @@
 
 shm_ring::shm_ring(size_t capacity, int k, int width):
 capacity_(capacity),
-slot_bytes_((size_t)k*width*3)
+slot_bytes_((size_t)k*width*3),
+width_(width)
 {
     region_bytes_ = sizeof(shm_ring_control) + capacity * sizeof(strip_hdr) + capacity * slot_bytes_;
     static int counter = 0;
@@ -63,15 +67,23 @@ shm_ring::~shm_ring(){
 }
 
 strip_view shm_ring::acquire(){
-    while(sem_wait(&(ctl_->empty))<0){
-        if(errno==EINTR) continue;
-        perror("sem_wait empty");
-        abort();
+    {
+        scoped_timer timer(this_stage().wait_out_ns);   // stage statistics: waiting for space
+        while(sem_wait(&(ctl_->empty))<0){
+            if(errno==EINTR) continue;
+            perror("sem_wait empty");
+            abort();
+        }
     }
     const size_t slot = head_ % capacity_;
     return {headers_ + slot, pixels_+slot * slot_bytes_};
 }
 void shm_ring::publish(){
+    // Link statistics, then (only in fault-injection builds) break the strip on purpose.
+    const size_t slot = head_ % capacity_;
+    sent_.add(headers_[slot], (size_t)headers_[slot].nrows * width_ * 3, 0);
+    maybe_inject_fault(headers_[slot], pixels_ + slot * slot_bytes_);
+
     ++head_;
     if(sem_post(&(ctl_->full))<0){
         perror("sem_post full");
@@ -80,15 +92,23 @@ void shm_ring::publish(){
 }
 
 strip_view shm_ring::receive(){
-    while(sem_wait(&(ctl_->full))<0){
-        if(errno==EINTR) continue;
-        perror("sem_wait full");
-        abort();
+    {
+        scoped_timer timer(this_stage().wait_in_ns);    // stage statistics: waiting for data
+        while(sem_wait(&(ctl_->full))<0){
+            if(errno==EINTR) continue;
+            perror("sem_wait full");
+            abort();
+        }
     }
+    if(this_stage().first_in_ns == 0) this_stage().first_in_ns = now_ns();
     const size_t slot = tail_ % capacity_;
     return {headers_ + slot, pixels_+slot * slot_bytes_};
 }
 void shm_ring::release(){
+    // Link statistics: the stage releases a strip only after verify_strip() accepted it.
+    const size_t slot = tail_ % capacity_;
+    received_.add(headers_[slot], (size_t)headers_[slot].nrows * width_ * 3, 0);
+
     ++tail_;
     if(sem_post(&(ctl_->empty))<0){
         perror("sem_post empty");

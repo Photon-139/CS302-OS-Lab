@@ -2,9 +2,10 @@ INPUT = 1
 OUTPUT = 1_out
 
 CXX = g++
-CXXFLAGS = -O2 -Wall -Wextra
-COMMON_SRC = ./libppm.cpp ./image_operations.cpp ./strip.cpp
-COMMON_HDR = ./libppm.hpp ./image_operations.hpp ./strip.hpp ./config.hpp
+# EXTRA: additional flags, e.g. make clean && make part2_1_variant1 EXTRA=-DFAULT_INJECT=1
+CXXFLAGS = -O2 -Wall -Wextra $(EXTRA)
+COMMON_SRC = ./libppm.cpp ./image_operations.cpp ./strip.cpp ./stats.cpp
+COMMON_HDR = ./libppm.hpp ./image_operations.hpp ./strip.hpp ./stats.hpp ./config.hpp
 RING_SRC = ./spsc_ring.cpp
 RING_HDR = ./spsc_ring.hpp
 

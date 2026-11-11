@@ -13,6 +13,7 @@
 #include "../spsc_ring.hpp"
 #include "../image_operations.hpp"
 #include "../config.hpp"
+#include "../stats.hpp"
 
 using unit = std::chrono::microseconds;
 
@@ -330,10 +331,15 @@ int main(int argc, char** argv){
 
     // Timed region: from starting the stages until all of them have finished
     // (includes S3's file write, which is also reported separately).
+    // Each stage runs through run_stage(), which prints the stage's statistics when it is done.
+    const char* stage_names[3] = {"S1", "S2", "S3"};
+    stage_launch launches[3];
     pthread_t threads[3];
     auto pipeline_start = std::chrono::steady_clock::now();
+    const uint64_t start_ns = now_ns();
     for(int i = 0; i < 3; ++i){
-        int err = pthread_create(&threads[i], NULL, funcs[i], (void*)(&context));
+        launches[i] = stage_launch{funcs[i], (void*)(&context), stage_names[i], start_ns};
+        int err = pthread_create(&threads[i], NULL, run_stage, (void*)(&launches[i]));
         if(err != 0){
             std::cerr << "Failed to create thread for S" << i+1 << ": " << strerror(err) << std::endl;
             return 1;
@@ -347,6 +353,12 @@ int main(int argc, char** argv){
         }
     }
     auto pipeline_end = std::chrono::steady_clock::now();
+
+    // Link statistics (both sides live in this process; all threads have finished).
+    print_link_stats("S1->S2", "send", context.s1_to_s2.sent(),     false);
+    print_link_stats("S1->S2", "recv", context.s1_to_s2.received(), false);
+    print_link_stats("S2->S3", "send", context.s2_to_s3.sent(),     false);
+    print_link_stats("S2->S3", "recv", context.s2_to_s3.received(), false);
 
     long long read_us     = std::chrono::duration_cast<unit>(read_end - read_start).count();
     long long pipeline_us = std::chrono::duration_cast<unit>(pipeline_end - pipeline_start).count();

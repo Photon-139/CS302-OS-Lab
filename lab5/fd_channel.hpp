@@ -1,5 +1,6 @@
 #pragma once
 #include "strip.hpp"
+#include "stats.hpp"
 
 class fd_channel {
 public:
@@ -15,10 +16,16 @@ public:
 
     // Consumer
     strip_view receive();   // readn(header); abort if nrows > k; readn(payload) into buf_
-    void       release();   // no-op
+    void       release();   // no new data to give back; counts the accepted strip
+
+    // Link statistics of this process's side (wire_bytes = headers + payload actually transferred).
+    const link_stats& sent() const     { return sent_; }
+    const link_stats& received() const { return received_; }
 
 private:
     int       read_fd_, write_fd_, k_, width_;
     strip_hdr hdr_;
     uint8_t*  buf_;         // k × width × 3 bytes
+    link_stats sent_;
+    link_stats received_;
 };

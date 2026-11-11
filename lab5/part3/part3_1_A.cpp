@@ -23,6 +23,7 @@
 #include "../image_operations.hpp"
 #include "../config.hpp"
 #include "../net_utils.hpp"
+#include "../stats.hpp"
 
 using unit = std::chrono::microseconds;
 
@@ -248,6 +249,9 @@ int main(int argc, char** argv){
         return 1;
     }
 
+    // Checksum of the input image: B compares it with its own copy (once, before timing).
+    const uint64_t image_hash = image_checksum(image);
+
     // Connect to B (retries while B is not listening yet) and tell it how to run.
     int socket_fd = connect_to(host, port);
     set_nodelay(socket_fd);
@@ -256,7 +260,8 @@ int main(int argc, char** argv){
                       (uint32_t)image->width, (uint32_t)image->height,
                       (uint32_t)k, (uint32_t)variant,
                       (uint32_t)config::ITERATIONS, (uint32_t)config::PASSES_PER_RESULT,
-                      (uint32_t)ring_capacity};
+                      (uint32_t)ring_capacity,
+                      (uint32_t)(image_hash >> 32), (uint32_t)(image_hash & 0xffffffffu)};
     send_params(socket_fd, params);
 
     pipeline_ctx context{image, k, ring_capacity, socket_fd};
@@ -273,10 +278,15 @@ int main(int argc, char** argv){
 
     // Timed region (end-to-end, on A's clock): from starting S1 and S2 until B reports that
     // S3 has finished and the output file is written.
+    // Each stage runs through run_stage(), which prints the stage's statistics when it is done.
+    const char* stage_names[2] = {"S1", "S2"};
+    stage_launch launches[2];
     pthread_t threads[2];
     auto pipeline_start = std::chrono::steady_clock::now();
+    const uint64_t start_ns = now_ns();
     for(int i = 0; i < 2; ++i){
-        int err = pthread_create(&threads[i], NULL, funcs[i], (void*)(&context));
+        launches[i] = stage_launch{funcs[i], (void*)(&context), stage_names[i], start_ns};
+        int err = pthread_create(&threads[i], NULL, run_stage, (void*)(&launches[i]));
         if(err != 0){
             std::cerr << "Failed to create thread for S" << i+1 << ": " << strerror(err) << std::endl;
             return 1;
@@ -291,6 +301,11 @@ int main(int argc, char** argv){
     }
     wait_done(socket_fd);
     auto pipeline_end = std::chrono::steady_clock::now();
+
+    // Link statistics of this machine's side of each link (all stage threads have finished).
+    print_link_stats("S1->S2", "send", context.s1_to_s2.sent(), false);
+    print_link_stats("S1->S2", "recv", context.s1_to_s2.received(), false);
+    print_link_stats("S2->S3", "send", context.s2_to_s3.sent(), true);
     close(socket_fd);
 
     long long read_us     = std::chrono::duration_cast<unit>(read_end - read_start).count();

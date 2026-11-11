@@ -33,6 +33,10 @@ uint64_t strip_checksum(const strip_hdr& hdr, const uint8_t* pixels, size_t n);
 void verify_strip(const strip_hdr& hdr, const uint8_t* pixels, int width,
                   uint32_t expected_iteration, uint32_t expected_r0, uint32_t expected_nrows);
 
+// FNV-1a over all pixel bytes of an image (Part III: A and B check they read the same input).
+struct flat_image_t;
+uint64_t image_checksum(const flat_image_t* image);
+
 constexpr size_t WIRE_HDR_BYTES = 24;
 
 void encode_header(const strip_hdr& h, uint8_t out[WIRE_HDR_BYTES]);   // htonl on each 32-bit word

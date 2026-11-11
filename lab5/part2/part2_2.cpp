@@ -20,6 +20,7 @@
 #include "../fd_channel.hpp"
 #include "../image_operations.hpp"
 #include "../config.hpp"
+#include "../stats.hpp"
 
 using unit = std::chrono::microseconds;
 
@@ -380,7 +381,9 @@ int main(int argc, char** argv){
     // (includes S3's file write, which S3 also reports separately).
     pid_t pids[3];
     int started = 0;
+    const char* stage_names[3] = {"S1", "S2", "S3"};
     auto pipeline_start = std::chrono::steady_clock::now();
+    const uint64_t start_ns = now_ns();
 
     for(int i = 0; i<3; ++i){
         pid_t pid = fork();
@@ -415,6 +418,19 @@ int main(int argc, char** argv){
                              s1_to_s2_read, s1_to_s2_write, s2_to_s3_read, s2_to_s3_write);
 
             funcs[i](&ctx);
+
+            // This process's statistics: its stage, and its side of each link it uses.
+            print_stage_stats(stage_names[i], start_ns);
+            if(i==0){
+                print_link_stats("S1->S2", "send", ctx.s1_to_s2.sent(), true);
+            }
+            if(i==1){
+                print_link_stats("S1->S2", "recv", ctx.s1_to_s2.received(), true);
+                print_link_stats("S2->S3", "send", ctx.s2_to_s3.sent(),     true);
+            }
+            if(i==2){
+                print_link_stats("S2->S3", "recv", ctx.s2_to_s3.received(), true);
+            }
 
             // _exit, not exit/return: the child must never continue into the parent's code.
             std::cout.flush();
